@@ -1,7 +1,8 @@
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+const path = require('path');
+const env = process.env.NODE_ENV || 'development';
+require('dotenv').config({ path: path.join(__dirname, `.env.${env}`) });
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const fs = require('fs');
 
 // 确保 data 和 skills 目录存在
