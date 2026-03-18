@@ -107,13 +107,12 @@ export default function AssetManager({ skillId, readonly }) {
                 <td>{formatDateTime(a.created_at)}</td>
                 <td style={{ textAlign: 'right' }}>
                   <a
-                    href={`/assets/${skillId}/assets/${encodeURIComponent(a.name)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={`/api/skills/${skillId}/assets/${encodeURIComponent(a.name)}`}
                     className="btn btn-default"
                     style={{ padding: '4px 8px', fontSize: 12, textDecoration: 'none' }}
+                    download
                   >
-                    查看
+                    下载
                   </a>
                   {!readonly && (
                     <button

@@ -169,7 +169,7 @@ export default function TextFileManager({ skillId, subdir, label, readonly }) {
         </div>
 
         {/* 弹窗 */}
-        <div className="modal-overlay" onClick={() => setEditing(null)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 700, width: '90%' }}>
             {readonly ? (
               // 查看模式

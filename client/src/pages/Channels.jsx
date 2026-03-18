@@ -199,7 +199,7 @@ export default function Channels() {
       )}
 
       {showForm && (
-        <div className="modal-overlay" onClick={handleFormClose}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h2>添加发布渠道</h2>
             <form onSubmit={handleCreate}>
@@ -227,7 +227,7 @@ export default function Channels() {
       )}
 
       {editingId && (
-        <div className="modal-overlay" onClick={() => setEditingId(null)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h2>编辑发布渠道</h2>
             <form onSubmit={handleUpdate}>

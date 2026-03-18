@@ -132,7 +132,7 @@ export default function SkillPreview({ skillId, onClose, initialContent }) {
   const { frontmatter, body } = parseFrontmatter(content);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 800, width: '90%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0 }}>SKILL.md 预览</h3>

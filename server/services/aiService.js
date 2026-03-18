@@ -13,79 +13,84 @@ function loadSkillCreatorPrompt() {
   return fs.readFileSync(SKILL_MD_PATH, 'utf-8');
 }
 
-const REQUIRED_FIELDS = ['name', 'description', 'version', 'category', 'skill_content'];
+const REQUIRED_FIELDS = ['name', 'description', 'skill_content'];
 
 const DEFAULT_SKILL = {
   name: '',
   description: '',
-  version: '1.0.0',
-  category: '',
   skill_content: '',
 };
 
 function parseGeneratedSkill(rawOutput) {
-  try {
-    const safeOutput = typeof rawOutput === 'string' ? rawOutput : '';
-    console.log(`[AI] Parsing response, first 500 chars: ${safeOutput.substring(0, 500)}`);
+  const safeOutput = typeof rawOutput === 'string' ? rawOutput : '';
+  console.log(`[AI] Parsing response, first 500 chars: ${safeOutput.substring(0, 500)}`);
 
-    // 1. Try to extract JSON from ```json ... ``` code blocks (non-greedy)
-    let codeBlockMatch = safeOutput.match(/```json\s*([\s\S]*?)```/);
-    if (codeBlockMatch) {
-      try {
-        const parsed = JSON.parse(codeBlockMatch[1].trim());
+  // 1. Try to extract JSON from ```json ... ``` code blocks (non-greedy)
+  let codeBlockMatch = safeOutput.match(/```json\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    try {
+      const parsed = JSON.parse(codeBlockMatch[1].trim());
+      if (isValidSkill(parsed)) {
         console.log('[AI] Parsed from json code block');
-        return fillDefaults(parsed);
-      } catch (e) {
-        console.log(`[AI] Failed to parse json code block: ${e.message}`);
+        return { success: true, skill: fillDefaults(parsed) };
       }
+    } catch (e) {
+      console.log(`[AI] Failed to parse json code block: ${e.message}`);
     }
+  }
 
-    // 2. Try to find JSON object in the response (look for { ... })
-    const jsonMatch = safeOutput.match(/\{[\s\S]*"name"[\s\S]*"description"[\s\S]*"skill_content"[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        // Try to extract valid JSON by finding matching braces
-        let jsonStr = jsonMatch[0];
-        // Count braces to find the complete JSON
-        let braceCount = 0;
-        let endIndex = 0;
-        for (let i = 0; i < jsonStr.length; i++) {
-          if (jsonStr[i] === '{') braceCount++;
-          if (jsonStr[i] === '}') {
-            braceCount--;
-            if (braceCount === 0) {
-              endIndex = i + 1;
-              break;
-            }
+  // 2. Try to find JSON object in the response (look for { ... })
+  const jsonMatch = safeOutput.match(/\{[\s\S]*"name"[\s\S]*"description"[\s\S]*"skill_content"[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      // Try to extract valid JSON by finding matching braces
+      let jsonStr = jsonMatch[0];
+      // Count braces to find the complete JSON
+      let braceCount = 0;
+      let endIndex = 0;
+      for (let i = 0; i < jsonStr.length; i++) {
+        if (jsonStr[i] === '{') braceCount++;
+        if (jsonStr[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            endIndex = i + 1;
+            break;
           }
         }
-        if (endIndex > 0) {
-          jsonStr = jsonStr.substring(0, endIndex);
-          const parsed = JSON.parse(jsonStr);
+      }
+      if (endIndex > 0) {
+        jsonStr = jsonStr.substring(0, endIndex);
+        const parsed = JSON.parse(jsonStr);
+        if (isValidSkill(parsed)) {
           console.log('[AI] Parsed from extracted JSON object');
-          return fillDefaults(parsed);
+          return { success: true, skill: fillDefaults(parsed) };
         }
-      } catch (e) {
-        console.log(`[AI] Failed to parse extracted JSON: ${e.message}`);
       }
+    } catch (e) {
+      console.log(`[AI] Failed to parse extracted JSON: ${e.message}`);
     }
-
-    // 3. Try to parse the raw output as bare JSON
-    try {
-      const parsed = JSON.parse(safeOutput);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        console.log('[AI] Parsed as bare JSON');
-        return fillDefaults(parsed);
-      }
-    } catch (_) {}
-
-    // 4. Fallback: return as skill_content
-    console.log('[AI] Using raw output as skill_content');
-    return { ...DEFAULT_SKILL, skill_content: safeOutput };
-  } catch (e) {
-    console.log(`[AI] Parse error: ${e.message}`);
-    return { ...DEFAULT_SKILL };
   }
+
+  // 3. Try to parse the raw output as bare JSON
+  try {
+    const parsed = JSON.parse(safeOutput);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && isValidSkill(parsed)) {
+      console.log('[AI] Parsed as bare JSON');
+      return { success: true, skill: fillDefaults(parsed) };
+    }
+  } catch (_) {}
+
+  // 4. Fallback: parse failed, return raw output
+  console.log('[AI] Failed to parse as valid skill JSON');
+  return { success: false, rawOutput: safeOutput };
+}
+
+function isValidSkill(parsed) {
+  return parsed &&
+    typeof parsed === 'object' &&
+    typeof parsed.name === 'string' && parsed.name.trim() &&
+    typeof parsed.description === 'string' && parsed.description.trim() &&
+    typeof parsed.skill_content === 'string' && parsed.skill_content.trim();
 }
 
 function fillDefaults(parsed) {
@@ -102,6 +107,7 @@ async function generateSkill(userPrompt, onChunk, options = {}) {
   const baseUrl = process.env.AI_API_BASE_URL || 'https://api.openai.com/v1';
   const apiKey = process.env.AI_API_KEY;
   const model = process.env.AI_MODEL || 'gpt-4o';
+  const language = options.language || 'zh';
 
   if (!apiKey) {
     throw new Error('AI 服务未配置，请设置 AI_API_KEY 环境变量');
@@ -109,16 +115,20 @@ async function generateSkill(userPrompt, onChunk, options = {}) {
 
   const skillCreatorContent = loadSkillCreatorPrompt();
 
+  const languageInstruction = language === 'en'
+    ? 'Please generate the Skill content in English.'
+    : '请使用中文生成 Skill 内容。';
+
   const systemPrompt = `你是一个 Skill 创建助手。请根据以下 Skill 创建指南来帮助用户创建高质量的 Skill。
 
 ${skillCreatorContent}
+
+${languageInstruction}
 
 请根据用户的需求描述，生成一个完整的 Skill。输出必须是以下 JSON 格式：
 {
   "name": "skill-name",
   "description": "Skill 功能描述（简短说明这个 Skill 的用途）",
-  "version": "1.0.0",
-  "category": "分类",
   "skill_content": "Markdown 格式的正文内容（不要包含 YAML frontmatter，直接写正文）"
 }
 
@@ -129,12 +139,15 @@ ${skillCreatorContent}
     { role: 'user', content: userPrompt },
   ];
 
+  console.log('[AI] System prompt:', systemPrompt);
+  console.log('[AI] User prompt:', userPrompt);
+
   const url = baseUrl.replace(/\/+$/, '') + '/chat/completions';
 
-  console.log(`[AI] Requesting: ${url}`);
-  console.log(`[AI] Model: ${model}`);
+  const doGenerate = async (attempt) => {
+    console.log(`[AI] Requesting: ${url} (attempt ${attempt})`);
+    console.log(`[AI] Model: ${model}`);
 
-  try {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -146,7 +159,7 @@ ${skillCreatorContent}
         messages,
         stream: false,
       }),
-      timeout: 120000,
+      timeout: 300000,
     });
 
     console.log(`[AI] Response status: ${response.status}`);
@@ -166,12 +179,21 @@ ${skillCreatorContent}
       onChunk(content);
     }
 
-    const skill = parseGeneratedSkill(content);
-    return { skill, abortController: new AbortController() };
+    const parseResult = parseGeneratedSkill(content);
+    return { ...parseResult, abortController: new AbortController() };
+  };
 
+  try {
+    return await doGenerate(1);
   } catch (err) {
-    console.error(`[AI] Error: ${err.message}`);
-    throw err;
+    console.error(`[AI] Error (attempt 1): ${err.message}`);
+    console.log('[AI] Retrying...');
+    try {
+      return await doGenerate(2);
+    } catch (retryErr) {
+      console.error(`[AI] Error (attempt 2): ${retryErr.message}`);
+      throw retryErr;
+    }
   }
 }
 

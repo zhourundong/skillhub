@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
+import ConfirmDialog from './ConfirmDialog';
 
 export default function AiGenerator({ onComplete, onCancel }) {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [parseError, setParseError] = useState(false);
+  const [rawOutput, setRawOutput] = useState('');
   const [error, setError] = useState('');
+  const [language, setLanguage] = useState('zh'); // 'zh' | 'en'
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -15,12 +20,14 @@ export default function AiGenerator({ onComplete, onCancel }) {
     setLoading(true);
     setError('');
     setResult(null);
+    setParseError(false);
+    setRawOutput('');
 
     try {
       const res = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ prompt, language })
       });
 
       if (!res.ok) {
@@ -29,7 +36,14 @@ export default function AiGenerator({ onComplete, onCancel }) {
       }
 
       const data = await res.json();
-      setResult(data.skill);
+      if (data.success) {
+        setResult(data.skill);
+        setParseError(false);
+      } else {
+        setResult(null);
+        setParseError(true);
+        setRawOutput(data.rawOutput || '');
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -42,14 +56,52 @@ export default function AiGenerator({ onComplete, onCancel }) {
       onComplete({
         name: result.name,
         description: result.description,
-        category: result.category,
         skill_content: result.skill_content
       });
     }
   };
 
+  const handleRegenerate = () => {
+    if (parseError) {
+      // 解析失败时直接重新生成，不需要确认
+      setResult(null);
+      setParseError(false);
+      setRawOutput('');
+    } else {
+      setConfirmRegenerate(true);
+    }
+  };
+
+  const confirmDoRegenerate = () => {
+    setConfirmRegenerate(false);
+    setResult(null);
+    setParseError(false);
+    setRawOutput('');
+  };
+
+  const updateField = (field, value) => {
+    setResult(prev => ({ ...prev, [field]: value }));
+  };
+
   return (
     <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <button
+          className={`btn ${language === 'zh' ? 'btn-primary' : 'btn-default'}`}
+          onClick={() => setLanguage('zh')}
+          disabled={loading}
+        >
+          中文
+        </button>
+        <button
+          className={`btn ${language === 'en' ? 'btn-primary' : 'btn-default'}`}
+          onClick={() => setLanguage('en')}
+          disabled={loading}
+        >
+          English
+        </button>
+      </div>
+
       <div className="form-group">
         <label>描述你想要的 Skill</label>
         <textarea
@@ -78,7 +130,7 @@ export default function AiGenerator({ onComplete, onCancel }) {
         </div>
       )}
 
-      {!result && (
+      {!result && !parseError && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn btn-default" onClick={onCancel} disabled={loading}>取消</button>
           <button className="btn btn-primary" onClick={handleGenerate} disabled={loading}>
@@ -87,27 +139,91 @@ export default function AiGenerator({ onComplete, onCancel }) {
         </div>
       )}
 
-      {result && (
+      {/* 解析成功：可编辑表单 */}
+      {result && !parseError && (
         <>
-          <div style={{ background: '#f8f9fa', borderRadius: 6, padding: 16, marginBottom: 16 }}>
-            <h4 style={{ marginBottom: 8 }}>生成结果</h4>
-            <p><strong>名称:</strong> {result.name || '(未命名)'}</p>
-            <p><strong>分类:</strong> {result.category || '未分类'}</p>
-            <p><strong>描述:</strong> {result.description || '暂无描述'}</p>
-            {result.skill_content && (
-              <div style={{ marginTop: 12 }}>
-                <strong>Skill 内容:</strong>
-                <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, background: '#fff', padding: 8, borderRadius: 4, marginTop: 4, maxHeight: 200, overflow: 'auto' }}>
-                  {result.skill_content}
-                </pre>
-              </div>
-            )}
+          <div style={{ marginBottom: 16 }}>
+            <div className="form-group">
+              <label>名称 *</label>
+              <input
+                value={result.name || ''}
+                onChange={e => updateField('name', e.target.value)}
+                placeholder="技能名称"
+              />
+            </div>
+            <div className="form-group">
+              <label>描述</label>
+              <textarea
+                value={result.description || ''}
+                onChange={e => updateField('description', e.target.value)}
+                placeholder="技能功能描述"
+                rows={3}
+              />
+            </div>
+            <div className="form-group">
+              <label>Skill 内容 (Markdown)</label>
+              <textarea
+                value={result.skill_content || ''}
+                onChange={e => updateField('skill_content', e.target.value)}
+                placeholder="Skill 内容"
+                style={{ height: 250, overflow: 'auto' }}
+              />
+            </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="btn btn-default" onClick={() => setResult(null)}>重新生成</button>
+            <button className="btn btn-default" onClick={handleRegenerate}>重新生成</button>
             <button className="btn btn-primary" onClick={handleConfirm}>确认创建</button>
           </div>
         </>
+      )}
+
+      {/* 解析失败：只读内容框 */}
+      {parseError && rawOutput && (
+        <>
+          <div style={{
+            background: '#fff2f0',
+            border: '1px solid #ffccc7',
+            borderRadius: 6,
+            padding: 12,
+            marginBottom: 16
+          }}>
+            <p style={{ color: '#ff4d4f', marginBottom: 8, fontWeight: 500 }}>
+              ⚠️ 模型返回内容无法解析为有效的 Skill 格式
+            </p>
+            <p style={{ color: '#666', fontSize: 13 }}>
+              请修改提示词后重新生成。确保提示词清晰描述你需要的 Skill 功能。
+            </p>
+          </div>
+          <div className="form-group">
+            <label>模型返回内容</label>
+            <pre style={{
+              background: '#f8f9fa',
+              padding: 16,
+              borderRadius: 6,
+              fontSize: 13,
+              lineHeight: 1.5,
+              maxHeight: 300,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              border: '1px solid #e8e8e8'
+            }}>
+              {rawOutput}
+            </pre>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-default" onClick={onCancel}>取消</button>
+            <button className="btn btn-primary" onClick={handleRegenerate}>修改提示词重新生成</button>
+          </div>
+        </>
+      )}
+
+      {confirmRegenerate && (
+        <ConfirmDialog
+          message="重新生成将清空当前编辑的内容，确定要继续吗？"
+          onConfirm={confirmDoRegenerate}
+          onCancel={() => setConfirmRegenerate(false)}
+        />
       )}
     </div>
   );

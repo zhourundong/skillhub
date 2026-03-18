@@ -118,5 +118,21 @@
     "status": "unpublished",
     "published_at": "2026-03-18T09:33:31.804Z",
     "unpublished_at": "2026-03-18T09:39:44.411Z"
+  },
+  {
+    "id": "7578a95d-3e11-4846-a663-cc107d50a497",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "unpublished",
+    "published_at": "2026-03-18T11:31:31.667Z",
+    "unpublished_at": "2026-03-18T11:53:19.248Z"
+  },
+  {
+    "id": "609e0f91-4bbd-4675-b8c8-03398c6fb9a1",
+    "skill_id": "1ea5efff-ce9d-4bbf-a13d-8fcaaaef13ae",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "published",
+    "published_at": "2026-03-18T12:17:13.929Z",
+    "unpublished_at": null
   }
 ]

@@ -166,6 +166,11 @@ const db = {
     return getSkillData(skillDir);
   },
 
+  findSkillByName(name, excludeId) {
+    const skills = this.listSkills({});
+    return skills.find(s => s.name === name && s.id !== excludeId);
+  },
+
   getRawSkillFile(id) {
     const skillDir = getSkillDir(id);
     if (!fs.existsSync(skillDir)) return null;

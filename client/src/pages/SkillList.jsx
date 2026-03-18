@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { skillsApi } from '../api';
 import SkillForm from '../components/SkillForm';
 import AiGenerator from '../components/AiGenerator';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const STATUS_MAP = { draft: '草稿', published: '已发布', unpublished: '已下架' };
 
@@ -19,6 +20,7 @@ export default function SkillList() {
   const [statusFilter, setStatusFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [showAi, setShowAi] = useState(false);
+  const [confirm, setConfirm] = useState(null);
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
@@ -32,15 +34,31 @@ export default function SkillList() {
   useEffect(() => { load(); }, [load]);
 
   const handleCreate = async (data) => {
-    await skillsApi.create(data);
-    setShowForm(false);
-    load();
+    try {
+      await skillsApi.create(data);
+      setShowForm(false);
+      load();
+    } catch (err) {
+      setConfirm({
+        message: err.response?.data?.error || err.message || '创建失败',
+        onConfirm: () => setConfirm(null),
+        type: 'error'
+      });
+    }
   };
 
   const handleAiCreate = async (data) => {
-    await skillsApi.create(data);
-    setShowAi(false);
-    load();
+    try {
+      await skillsApi.create(data);
+      setShowAi(false);
+      load();
+    } catch (err) {
+      setConfirm({
+        message: err.response?.data?.error || err.message || '创建失败',
+        onConfirm: () => setConfirm(null),
+        type: 'error'
+      });
+    }
   };
 
   return (
@@ -106,7 +124,7 @@ export default function SkillList() {
       )}
 
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h2>创建 Skill</h2>
             <SkillForm onSubmit={handleCreate} onCancel={() => setShowForm(false)} />
@@ -115,12 +133,20 @@ export default function SkillList() {
       )}
 
       {showAi && (
-        <div className="modal-overlay" onClick={() => setShowAi(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
             <h2>AI 生成 Skill</h2>
             <AiGenerator onComplete={handleAiCreate} onCancel={() => setShowAi(false)} />
           </div>
         </div>
+      )}
+
+      {confirm && (
+        <ConfirmDialog
+          message={confirm.message}
+          onConfirm={confirm.onConfirm}
+          type={confirm.type}
+        />
       )}
     </>
   );

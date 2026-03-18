@@ -7,7 +7,7 @@ const MAX_PROMPT_LENGTH = 5000;
 
 // POST /generate — AI skill generation
 router.post('/generate', async (req, res) => {
-  const { prompt } = req.body;
+  const { prompt, language } = req.body;
 
   // Validate prompt
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -25,8 +25,12 @@ router.post('/generate', async (req, res) => {
   }
 
   try {
-    const { skill } = await aiService.generateSkill(prompt);
-    res.json({ skill });
+    const result = await aiService.generateSkill(prompt, null, { language });
+    res.json({
+      success: result.success,
+      skill: result.skill,
+      rawOutput: result.rawOutput
+    });
   } catch (err) {
     console.error(`[AI Route] Error: ${err.message}`);
     res.status(500).json({ error: err.message });

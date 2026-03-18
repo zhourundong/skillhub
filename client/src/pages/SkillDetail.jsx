@@ -52,9 +52,17 @@ export default function SkillDetail() {
   const isReadonly = skill.status === 'published';
 
   const handleUpdate = async (data) => {
-    await skillsApi.update(id, data);
-    setEditing(false);
-    load();
+    try {
+      await skillsApi.update(id, data);
+      setEditing(false);
+      load();
+    } catch (err) {
+      setConfirm({
+        message: err.response?.data?.error || err.message || '更新失败',
+        onConfirm: () => setConfirm(null),
+        type: 'error'
+      });
+    }
   };
 
   const handlePublish = async () => {
@@ -97,7 +105,16 @@ export default function SkillDetail() {
     <div style={{ marginTop: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <button className="btn btn-default" onClick={() => navigate('/')}>← 返回列表</button>
-        <button className="btn btn-default" onClick={() => setShowPreview(true)}>预览 SKILL.md</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a
+            href={`/api/skills/${id}/download`}
+            className="btn btn-default"
+            style={{ textDecoration: 'none' }}
+          >
+            下载
+          </a>
+          <button className="btn btn-default" onClick={() => setShowPreview(true)}>预览 SKILL.md</button>
+        </div>
       </div>
 
       {editing ? (

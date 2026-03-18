@@ -1,6 +1,8 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+const archiver = require('archiver');
 const db = require('../db');
 
 const router = express.Router();
@@ -51,6 +53,12 @@ router.post('/', (req, res) => {
 
   if (!name) return res.status(400).json({ error: '名称不能为空' });
 
+  // 检查名称是否重复
+  const existing = db.findSkillByName(name);
+  if (existing) {
+    return res.status(400).json({ error: `技能名称「${name}」已存在` });
+  }
+
   const skill = db.createSkill({
     name,
     description: description || '',
@@ -68,6 +76,15 @@ router.put('/:id', (req, res) => {
   if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
 
   const { name, description, version, category, skill_content } = req.body;
+
+  // 检查名称是否重复（排除自身）
+  if (name && name !== skill.name) {
+    const existing = db.findSkillByName(name, req.params.id);
+    if (existing) {
+      return res.status(400).json({ error: `技能名称「${name}」已存在` });
+    }
+  }
+
   const updated = db.updateSkill(req.params.id, {
     name,
     description,
@@ -86,6 +103,52 @@ router.delete('/:id', (req, res) => {
 
   db.deleteSkill(req.params.id);
   res.json({ message: '删除成功' });
+});
+
+// 下载 skill zip 包
+router.get('/:id/download', (req, res) => {
+  const skill = db.getSkill(req.params.id);
+  if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+  const skillDir = path.join(__dirname, '..', '..', 'skills', req.params.id);
+  if (!fs.existsSync(skillDir)) {
+    return res.status(404).json({ error: 'Skill 目录不存在' });
+  }
+
+  // 清理文件名中的特殊字符
+  const safeName = (skill.name || req.params.id).replace(/[<>:"/\\|?*\s]/g, '-');
+  const zipName = `${safeName}.zip`;
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`);
+
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  archive.on('error', (err) => {
+    console.error('Archive error:', err);
+    res.status(500).json({ error: '打包失败' });
+  });
+
+  archive.pipe(res);
+
+  // 遍历目录，排除 metadata.json 和空目录
+  const files = fs.readdirSync(skillDir);
+  for (const file of files) {
+    if (file === 'metadata.json') continue;
+
+    const filePath = path.join(skillDir, file);
+    const stat = fs.statSync(filePath);
+
+    if (stat.isDirectory()) {
+      // 检查目录是否为空
+      const dirFiles = fs.readdirSync(filePath);
+      if (dirFiles.length === 0) continue;
+      archive.directory(filePath, file);
+    } else {
+      archive.file(filePath, { name: file });
+    }
+  }
+
+  archive.finalize();
 });
 
 // 获取 assets 列表
