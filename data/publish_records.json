@@ -1,0 +1,122 @@
+[
+  {
+    "id": "7cd6c2c3-4d8d-4720-9f58-4523a9b150da",
+    "skill_id": "b89f8b1f-09a0-44a3-8a8f-f58a90759eb8",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "published",
+    "published_at": "2026-03-17T14:21:48.710Z",
+    "unpublished_at": null
+  },
+  {
+    "id": "2f7e837e-aea7-4a2b-b03a-f92f9f2ed86b",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "unpublished",
+    "published_at": "2026-03-17T14:25:27.335Z",
+    "unpublished_at": "2026-03-17T14:25:33.513Z"
+  },
+  {
+    "id": "f061d4bf-aada-43d5-aabf-ec62c3572694",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "unpublished",
+    "published_at": "2026-03-17T14:25:39.107Z",
+    "unpublished_at": "2026-03-17T14:26:43.975Z"
+  },
+  {
+    "id": "7bb8d199-2797-46d9-951f-5414648d3631",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "unpublished",
+    "published_at": "2026-03-17T14:27:33.358Z",
+    "unpublished_at": "2026-03-17T14:27:41.137Z"
+  },
+  {
+    "id": "fdbbbdd2-c288-4b16-a704-56fb4f0bebe0",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "unpublished",
+    "published_at": "2026-03-17T14:27:51.335Z",
+    "unpublished_at": "2026-03-18T03:39:03.493Z"
+  },
+  {
+    "id": "ec5208c2-da7e-4a77-8424-dde7c6487c70",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "unpublished",
+    "published_at": "2026-03-18T03:39:04.922Z",
+    "unpublished_at": "2026-03-18T03:39:30.144Z"
+  },
+  {
+    "id": "2e563168-3b0f-4cf0-a0b0-e54adf161b2d",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "unpublished",
+    "published_at": "2026-03-18T03:39:31.274Z",
+    "unpublished_at": "2026-03-18T06:47:27.932Z"
+  },
+  {
+    "id": "d3a14149-b884-4844-ac97-393f57107ef2",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "fc4190fe-d94c-4fa1-9cc1-669c2dd8c032",
+    "status": "unpublished",
+    "published_at": "2026-03-18T06:47:30.844Z",
+    "unpublished_at": "2026-03-18T06:47:52.821Z"
+  },
+  {
+    "id": "a8995df6-c507-4b55-ae8d-cdbe6a327e71",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "fc4190fe-d94c-4fa1-9cc1-669c2dd8c032",
+    "status": "unpublished",
+    "published_at": "2026-03-18T06:47:56.404Z",
+    "unpublished_at": "2026-03-18T06:48:03.289Z"
+  },
+  {
+    "id": "15de5509-b623-49be-a581-fc67debf69bd",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "c295a235-a754-488d-85a1-115876019d27",
+    "status": "unpublished",
+    "published_at": "2026-03-18T08:39:32.182Z",
+    "unpublished_at": "2026-03-18T08:48:11.504Z"
+  },
+  {
+    "id": "358ba205-199b-4009-b9fd-3b1799e09b29",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "c295a235-a754-488d-85a1-115876019d27",
+    "status": "unpublished",
+    "published_at": "2026-03-18T08:59:02.125Z",
+    "unpublished_at": "2026-03-18T09:00:16.558Z"
+  },
+  {
+    "id": "7eba5f27-0aff-444a-942f-a1f7aef74dfd",
+    "skill_id": "8b7c6c40-951e-419c-a9a9-0456b30fd22c",
+    "channel_id": "c295a235-a754-488d-85a1-115876019d27",
+    "status": "published",
+    "published_at": "2026-03-18T08:59:32.046Z",
+    "unpublished_at": null
+  },
+  {
+    "id": "fcf8f008-2e33-4fa0-a4a9-1699f975f4e1",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "unpublished",
+    "published_at": "2026-03-18T09:27:06.484Z",
+    "unpublished_at": "2026-03-18T09:27:18.030Z"
+  },
+  {
+    "id": "20a5e599-e676-48fa-bb3a-ca0e327f828b",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "ed049166-504c-4570-a071-5f7f1317ee14",
+    "status": "unpublished",
+    "published_at": "2026-03-18T09:33:04.665Z",
+    "unpublished_at": "2026-03-18T09:33:19.099Z"
+  },
+  {
+    "id": "bad7b2bb-4a2e-460a-a986-c646d32a5754",
+    "skill_id": "fe414a3a-bac6-4480-b418-b0a9e96485fa",
+    "channel_id": "c295a235-a754-488d-85a1-115876019d27",
+    "status": "unpublished",
+    "published_at": "2026-03-18T09:33:31.804Z",
+    "unpublished_at": "2026-03-18T09:39:44.411Z"
+  }
+]
