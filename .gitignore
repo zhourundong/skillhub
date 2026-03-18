@@ -11,3 +11,4 @@ excalidraw.log
 .trae/*
 server/.env.development
 server/.env.production
+published_skills/*
