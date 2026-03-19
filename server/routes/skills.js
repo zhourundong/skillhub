@@ -30,9 +30,15 @@ function decodeFilename(filename) {
 
 // 获取所有 skills
 router.get('/', (req, res) => {
-  const { status, category, keyword } = req.query;
-  const skills = db.listSkills({ status, category, keyword });
-  res.json({ data: skills });
+  const { status, category, keyword, page, pageSize } = req.query;
+  const result = db.listSkills({
+    status,
+    category,
+    keyword,
+    page: page ? parseInt(page, 10) : 1,
+    pageSize: pageSize ? parseInt(pageSize, 10) : 10
+  });
+  res.json(result);
 });
 
 // 导入 ZIP 创建 Skill

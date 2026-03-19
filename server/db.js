@@ -189,7 +189,7 @@ function checkDirPathConflict(skillId, dirPath, excludeId = null) {
 // Database-like API
 const db = {
   // Skills
-  listSkills({ status, category, keyword }) {
+  listSkills({ status, category, keyword, page = 1, pageSize = 10 }) {
     const skillDirs = fs.readdirSync(skillsDir).filter(f => {
       const stat = fs.statSync(path.join(skillsDir, f));
       return stat.isDirectory() && fs.existsSync(path.join(skillsDir, f, 'metadata.json'));
@@ -208,7 +208,23 @@ const db = {
     }
 
     skills.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-    return skills;
+
+    // 分页
+    const total = skills.length;
+    const totalPages = Math.ceil(total / pageSize);
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    const paginatedSkills = skills.slice(start, end);
+
+    return {
+      data: paginatedSkills,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages
+      }
+    };
   },
 
   getSkill(id) {
