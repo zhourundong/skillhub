@@ -5,9 +5,9 @@ const router = express.Router();
 
 const MAX_PROMPT_LENGTH = 5000;
 
-// POST /generate — AI skill generation
+// POST /generate — AI skill generation with SSE
 router.post('/generate', async (req, res) => {
-  const { prompt, language } = req.body;
+  const { prompt, language, fileOptions } = req.body;
 
   // Validate prompt
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -24,16 +24,46 @@ router.post('/generate', async (req, res) => {
     return res.status(503).json({ error: 'AI 服务未配置，请设置 AI_API_KEY 环境变量' });
   }
 
+  // 设置 SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  // 发送事件的辅助函数
+  const sendEvent = (event, data) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // 文件生成回调
+  const onFileGenerated = (file) => {
+    sendEvent('file', file);
+  };
+
+  // 内容回调（用于调试）
+  const onChunk = (content) => {
+    sendEvent('chunk', { content: content.substring(0, 200) });
+  };
+
   try {
-    const result = await aiService.generateSkill(prompt, null, { language });
-    res.json({
+    // 注册文件生成回调
+    aiService.setFileGeneratedCallback(onFileGenerated);
+
+    const result = await aiService.generateSkill(prompt, onChunk, { language, fileOptions });
+
+    // 发送最终结果
+    sendEvent('done', {
       success: result.success,
       skill: result.skill,
       rawOutput: result.rawOutput
     });
   } catch (err) {
     console.error(`[AI Route] Error: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    sendEvent('error', { error: err.message });
+  } finally {
+    aiService.setFileGeneratedCallback(null);
+    res.end();
   }
 });
 

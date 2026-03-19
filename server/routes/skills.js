@@ -49,7 +49,7 @@ router.get('/:id/raw', (req, res) => {
 
 // 创建 skill
 router.post('/', (req, res) => {
-  const { name, description, version, category, skill_content } = req.body;
+  const { name, description, version, category, skill_content, scripts, references, assets } = req.body;
 
   if (!name) return res.status(400).json({ error: '名称不能为空' });
 
@@ -66,6 +66,42 @@ router.post('/', (req, res) => {
     category: category || '',
     skill_content: skill_content || ''
   });
+
+  // 保存辅助文件
+  const skillId = skill.id;
+
+  // 保存 scripts
+  if (Array.isArray(scripts) && scripts.length > 0) {
+    for (const file of scripts) {
+      if (file.filename && file.content) {
+        db.saveTextFile(skillId, 'scripts', file.filename, file.content);
+      }
+    }
+  }
+
+  // 保存 references
+  if (Array.isArray(references) && references.length > 0) {
+    for (const file of references) {
+      if (file.filename && file.content) {
+        db.saveTextFile(skillId, 'references', file.filename, file.content);
+      }
+    }
+  }
+
+  // 保存 assets（文本文件）
+  if (Array.isArray(assets) && assets.length > 0) {
+    for (const file of assets) {
+      if (file.filename && file.content) {
+        // 尝试作为文本文件保存
+        try {
+          db.saveTextFile(skillId, 'assets', file.filename, file.content);
+        } catch (e) {
+          // 如果是二进制内容，用 Buffer 保存
+          db.saveAsset(skillId, file.filename, Buffer.from(file.content, 'utf-8'));
+        }
+      }
+    }
+  }
 
   res.status(201).json({ data: skill });
 });

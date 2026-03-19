@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import ConfirmDialog from './ConfirmDialog';
 
 export default function AiGenerator({ onComplete, onCancel }) {
@@ -10,6 +10,21 @@ export default function AiGenerator({ onComplete, onCancel }) {
   const [error, setError] = useState('');
   const [language, setLanguage] = useState('zh'); // 'zh' | 'en'
   const [confirmRegenerate, setConfirmRegenerate] = useState(false);
+  const [expandedFiles, setExpandedFiles] = useState({});
+  const [generatingFiles, setGeneratingFiles] = useState({ scripts: [], references: [], assets: [] });
+  const [statusText, setStatusText] = useState('');
+  const abortControllerRef = useRef(null);
+
+  // 辅助文件选项，默认只勾选参考资料
+  const [fileOptions, setFileOptions] = useState({
+    scripts: false,
+    references: true,
+    assets: false
+  });
+
+  const toggleFileOption = (type) => {
+    setFileOptions(prev => ({ ...prev, [type]: !prev[type] }));
+  };
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -22,33 +37,105 @@ export default function AiGenerator({ onComplete, onCancel }) {
     setResult(null);
     setParseError(false);
     setRawOutput('');
+    setExpandedFiles({});
+    setGeneratingFiles({ scripts: [], references: [], assets: [] });
+    setStatusText('正在连接 AI 服务...');
+
+    // 创建 AbortController 用于取消请求
+    abortControllerRef.current = new AbortController();
 
     try {
-      const res = await fetch('/api/ai/generate', {
+      const response = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, language })
+        body: JSON.stringify({ prompt, language, fileOptions }),
+        signal: abortControllerRef.current.signal
       });
 
-      if (!res.ok) {
-        const err = await res.json();
+      if (!response.ok) {
+        const err = await response.json();
         throw new Error(err.error || '生成失败');
       }
 
-      const data = await res.json();
-      if (data.success) {
-        setResult(data.skill);
-        setParseError(false);
-      } else {
-        setResult(null);
-        setParseError(true);
-        setRawOutput(data.rawOutput || '');
+      // 处理 SSE 流
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // 解析 SSE 事件
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 保留未完成的行
+
+        let eventType = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6);
+            try {
+              const data = JSON.parse(dataStr);
+
+              if (eventType === 'file') {
+                // 新文件生成
+                setGeneratingFiles(prev => ({
+                  ...prev,
+                  [data.type]: [...prev[data.type], { filename: data.filename, size: data.size }]
+                }));
+                setStatusText(`生成文件: ${data.filename}`);
+              } else if (eventType === 'chunk') {
+                setStatusText('AI 正在思考...');
+              } else if (eventType === 'done') {
+                // 完成
+                if (data.success) {
+                  // 合并生成的文件内容
+                  const skill = {
+                    ...data.skill,
+                    scripts: data.skill.scripts || [],
+                    references: data.skill.references || [],
+                    assets: data.skill.assets || []
+                  };
+                  setResult(skill);
+                  setParseError(false);
+                } else {
+                  setResult(null);
+                  setParseError(true);
+                  setRawOutput(data.rawOutput || '');
+                }
+              } else if (eventType === 'error') {
+                throw new Error(data.error);
+              }
+            } catch (e) {
+              if (e.message && !e.message.includes('JSON')) {
+                throw e;
+              }
+            }
+          }
+        }
       }
     } catch (err) {
-      setError(err.message);
+      if (err.name === 'AbortError') {
+        console.log('Request aborted');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
+      setStatusText('');
+      abortControllerRef.current = null;
     }
+  };
+
+  const handleCancel = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    onCancel();
   };
 
   const handleConfirm = () => {
@@ -56,17 +143,21 @@ export default function AiGenerator({ onComplete, onCancel }) {
       onComplete({
         name: result.name,
         description: result.description,
-        skill_content: result.skill_content
+        skill_content: result.skill_content,
+        scripts: result.scripts || [],
+        references: result.references || [],
+        assets: result.assets || []
       });
     }
   };
 
   const handleRegenerate = () => {
     if (parseError) {
-      // 解析失败时直接重新生成，不需要确认
       setResult(null);
       setParseError(false);
       setRawOutput('');
+      setExpandedFiles({});
+      setGeneratingFiles({ scripts: [], references: [], assets: [] });
     } else {
       setConfirmRegenerate(true);
     }
@@ -77,11 +168,170 @@ export default function AiGenerator({ onComplete, onCancel }) {
     setResult(null);
     setParseError(false);
     setRawOutput('');
+    setExpandedFiles({});
+    setGeneratingFiles({ scripts: [], references: [], assets: [] });
   };
 
   const updateField = (field, value) => {
     setResult(prev => ({ ...prev, [field]: value }));
   };
+
+  const toggleFileExpand = (type, index) => {
+    const key = `${type}-${index}`;
+    setExpandedFiles(prev => {
+      // 手风琴效果：如果当前已展开则收起，否则只展开当前
+      if (prev[key]) {
+        return {};
+      }
+      return { [key]: true };
+    });
+  };
+
+  const updateAuxiliaryFile = (type, index, field, value) => {
+    setResult(prev => {
+      const newList = [...(prev[type] || [])];
+      newList[index] = { ...newList[index], [field]: value };
+      return { ...prev, [type]: newList };
+    });
+  };
+
+  const removeAuxiliaryFile = (type, index) => {
+    setResult(prev => {
+      const newList = [...(prev[type] || [])];
+      newList.splice(index, 1);
+      return { ...prev, [type]: newList };
+    });
+    // 收起展开状态
+    setExpandedFiles({});
+  };
+
+  // 渲染生成中的文件列表
+  const renderGeneratingFiles = (type, label, icon) => {
+    const files = generatingFiles[type];
+    if (files.length === 0) return null;
+
+    return (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+          <span>{icon}</span>
+          <span style={{ fontWeight: 500, color: '#666', fontSize: 13 }}>{label}</span>
+        </div>
+        {files.map((file, index) => (
+          <div key={index} style={{
+            background: '#e6f7ff',
+            border: '1px solid #91d5ff',
+            borderRadius: 4,
+            padding: '4px 8px',
+            marginBottom: 4,
+            fontSize: 12
+          }}>
+            <span style={{ fontFamily: 'monospace' }}>{file.filename}</span>
+            <span style={{ color: '#999', marginLeft: 8 }}>({file.size} chars)</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // 渲染辅助文件列表
+  const renderAuxiliaryFiles = (type, label, icon) => {
+    const files = result?.[type] || [];
+    if (files.length === 0) return null;
+
+    return (
+      <div style={{ marginTop: 12 }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          marginBottom: 8,
+          fontSize: 13,
+          color: '#666'
+        }}>
+          <span>{icon}</span>
+          <span>{label}</span>
+          <span style={{ background: '#e8e8e8', padding: '1px 6px', borderRadius: 10, fontSize: 11 }}>{files.length}</span>
+        </div>
+        {files.map((file, index) => {
+          const isExpanded = expandedFiles[`${type}-${index}`];
+          return (
+            <div key={`${type}-${index}`} style={{
+              background: '#fff',
+              border: `1px solid ${isExpanded ? '#1890ff' : '#e8e8e8'}`,
+              borderRadius: 6,
+              marginBottom: 6,
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                cursor: 'pointer',
+                background: isExpanded ? '#f0f7ff' : '#fafafa'
+              }} onClick={() => toggleFileExpand(type, index)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    color: isExpanded ? '#1890ff' : '#999',
+                    fontSize: 12,
+                    transition: 'transform 0.2s',
+                    display: 'inline-block',
+                    transform: isExpanded ? 'rotate(90deg)' : 'none'
+                  }}>▶</span>
+                  <span style={{
+                    fontFamily: 'monospace',
+                    color: isExpanded ? '#1890ff' : '#333',
+                    fontSize: 13
+                  }}>{file.filename}</span>
+                  <span style={{ color: '#bbb', fontSize: 11 }}>{file.content?.length || 0} 字符</span>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); removeAuxiliaryFile(type, index); }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#999',
+                    cursor: 'pointer',
+                    padding: '2px 6px',
+                    fontSize: 12
+                  }}
+                  title="删除"
+                >
+                  ✕
+                </button>
+              </div>
+              {isExpanded && (
+                <div style={{ padding: '12px', borderTop: '1px solid #e8e8e8', background: '#fff' }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 12, color: '#666', marginBottom: 4, display: 'block' }}>文件名</label>
+                    <input
+                      value={file.filename}
+                      onChange={e => updateAuxiliaryFile(type, index, 'filename', e.target.value)}
+                      placeholder="文件名"
+                      style={{ fontSize: 13 }
+                    }
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: '#666', marginBottom: 4, display: 'block' }}>内容</label>
+                    <textarea
+                      value={file.content}
+                      onChange={e => updateAuxiliaryFile(type, index, 'content', e.target.value)}
+                      placeholder="文件内容"
+                      style={{ fontSize: 12, fontFamily: 'monospace', minHeight: 200, background: '#fafafa' }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const hasGeneratingFiles = generatingFiles.scripts.length > 0 || generatingFiles.references.length > 0 || generatingFiles.assets.length > 0;
+  const hasAuxiliaryFiles = (result?.scripts?.length > 0 || result?.references?.length > 0 || result?.assets?.length > 0);
 
   return (
     <div>
@@ -103,6 +353,45 @@ export default function AiGenerator({ onComplete, onCancel }) {
       </div>
 
       <div className="form-group">
+        <label style={{ marginBottom: 8 }}>辅助文件（可选）</label>
+        <div style={{ display: 'flex', gap: 24, marginBottom: 4 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={fileOptions.scripts}
+              onChange={() => toggleFileOption('scripts')}
+              disabled={loading}
+              style={{ width: 16, height: 16 }}
+            />
+            <span>脚本文件</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={fileOptions.references}
+              onChange={() => toggleFileOption('references')}
+              disabled={loading}
+              style={{ width: 16, height: 16 }}
+            />
+            <span>参考文档</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={fileOptions.assets}
+              onChange={() => toggleFileOption('assets')}
+              disabled={loading}
+              style={{ width: 16, height: 16 }}
+            />
+            <span>静态资源</span>
+          </label>
+        </div>
+        <div style={{ fontSize: 12, color: '#999', lineHeight: 1.5 }}>
+          勾选后 AI 可能会生成相应的辅助文件，此选项仅作为系统提示，不作为AI生成依据。
+        </div>
+      </div>
+
+      <div className="form-group">
         <label>描述你想要的 Skill</label>
         <textarea
           value={prompt}
@@ -116,23 +405,40 @@ export default function AiGenerator({ onComplete, onCancel }) {
       {error && <p style={{ color: '#e74c3c', marginBottom: 12 }}>{error}</p>}
 
       {loading && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, marginBottom: 16 }}>
-          <div style={{
-            width: 32,
-            height: 32,
-            border: '3px solid #f0f0f0',
-            borderTop: '3px solid #1890ff',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite'
-          }} />
-          <span style={{ marginLeft: 12, color: '#666' }}>AI 正在生成...</span>
-          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{
+              width: 24,
+              height: 24,
+              border: '2px solid #f0f0f0',
+              borderTop: '2px solid #1890ff',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }} />
+            <span style={{ marginLeft: 12, color: '#666' }}>{statusText || 'AI 正在生成...'}</span>
+            <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+          </div>
+
+          {/* 实时显示生成中的文件 */}
+          {hasGeneratingFiles && (
+            <div style={{
+              background: '#fafafa',
+              border: '1px solid #e8e8e8',
+              borderRadius: 6,
+              padding: 12
+            }}>
+              <div style={{ fontSize: 13, color: '#999', marginBottom: 8 }}>正在生成的文件：</div>
+              {renderGeneratingFiles('scripts', '脚本文件', '🐍')}
+              {renderGeneratingFiles('references', '参考文档', '📄')}
+              {renderGeneratingFiles('assets', '静态资源', '📦')}
+            </div>
+          )}
         </div>
       )}
 
       {!result && !parseError && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="btn btn-default" onClick={onCancel} disabled={loading}>取消</button>
+          <button className="btn btn-default" onClick={handleCancel} disabled={loading}>取消</button>
           <button className="btn btn-primary" onClick={handleGenerate} disabled={loading}>
             {loading ? '生成中...' : '生成'}
           </button>
@@ -169,6 +475,19 @@ export default function AiGenerator({ onComplete, onCancel }) {
                 style={{ height: 250, overflow: 'auto' }}
               />
             </div>
+
+            {/* 辅助文件区域 */}
+            {hasAuxiliaryFiles && (
+              <div style={{
+                marginTop: 16,
+                paddingTop: 12,
+                borderTop: '1px solid #e8e8e8'
+              }}>
+                {renderAuxiliaryFiles('scripts', '脚本', '🐍')}
+                {renderAuxiliaryFiles('references', '参考文档', '📄')}
+                {renderAuxiliaryFiles('assets', '静态资源', '📦')}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn btn-default" onClick={handleRegenerate}>重新生成</button>
@@ -212,7 +531,7 @@ export default function AiGenerator({ onComplete, onCancel }) {
             </pre>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="btn btn-default" onClick={onCancel}>取消</button>
+            <button className="btn btn-default" onClick={handleCancel}>取消</button>
             <button className="btn btn-primary" onClick={handleRegenerate}>修改提示词重新生成</button>
           </div>
         </>

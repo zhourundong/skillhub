@@ -63,28 +63,32 @@ export default function SkillList() {
 
   return (
     <>
-      <div className="toolbar">
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <input
-            className="search-input"
-            placeholder="搜索 Skill 名称或描述..."
-            value={keyword}
-            onChange={e => setKeyword(e.target.value)}
-          />
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #d9d9d9', fontSize: 14 }}
-          >
-            <option value="">全部状态</option>
-            <option value="draft">草稿</option>
-            <option value="published">已发布</option>
-            <option value="unpublished">已下架</option>
-          </select>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-default" onClick={() => setShowAi(true)}>AI 生成</button>
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ 创建 Skill</button>
+      <div className="toolbar-wrapper">
+        <div className="container">
+          <div className="toolbar">
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <input
+                className="search-input"
+                placeholder="搜索 Skill 名称或描述..."
+                value={keyword}
+                onChange={e => setKeyword(e.target.value)}
+              />
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #d9d9d9', fontSize: 14 }}
+              >
+                <option value="">全部状态</option>
+                <option value="draft">草稿</option>
+                <option value="published">已发布</option>
+                <option value="unpublished">已下架</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-default" onClick={() => setShowAi(true)}>AI 生成</button>
+              <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ 创建 Skill</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -134,7 +138,7 @@ export default function SkillList() {
 
       {showAi && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 900, width: '90%' }}>
             <h2>AI 生成 Skill</h2>
             <AiGenerator onComplete={handleAiCreate} onCancel={() => setShowAi(false)} />
           </div>

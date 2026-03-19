@@ -1,6 +1,12 @@
 const path = require('path');
 const env = process.env.NODE_ENV || 'development';
 require('dotenv').config({ path: path.join(__dirname, `.env.${env}`) });
+
+// 日志输出到文件
+const { overrideConsole, LOG_FILE } = require('./utils/logger');
+overrideConsole();
+console.log(`日志文件: ${LOG_FILE}`);
+
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
