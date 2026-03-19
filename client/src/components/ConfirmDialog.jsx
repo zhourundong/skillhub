@@ -1,7 +1,22 @@
 import React from 'react';
 
 export default function ConfirmDialog({ message, onConfirm, onCancel, type = 'confirm' }) {
-  const isError = type === 'error' || onConfirm === onCancel;
+  const isError = type === 'error';
+  const isSuccess = type === 'success';
+  const isConfirm = !isError && !isSuccess;
+
+  // 根据类型设置样式
+  const getStyles = () => {
+    if (isError) {
+      return { borderColor: '#ff4d4f', bg: '#fff2f0', color: '#ff4d4f', icon: '✕' };
+    }
+    if (isSuccess) {
+      return { borderColor: '#52c41a', bg: '#f6ffed', color: '#52c41a', icon: '✓' };
+    }
+    return { borderColor: '#667eea', bg: '#f0f5ff', color: '#667eea', icon: '?' };
+  };
+
+  const styles = getStyles();
 
   return (
     <div className="modal-overlay">
@@ -10,7 +25,7 @@ export default function ConfirmDialog({ message, onConfirm, onCancel, type = 'co
         onClick={e => e.stopPropagation()}
         style={{
           maxWidth: 400,
-          borderLeft: isError ? '4px solid #ff4d4f' : '4px solid #667eea',
+          borderLeft: `4px solid ${styles.borderColor}`,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20 }}>
@@ -23,10 +38,10 @@ export default function ConfirmDialog({ message, onConfirm, onCancel, type = 'co
             justifyContent: 'center',
             fontSize: 18,
             flexShrink: 0,
-            background: isError ? '#fff2f0' : '#f0f5ff',
-            color: isError ? '#ff4d4f' : '#667eea',
+            background: styles.bg,
+            color: styles.color,
           }}>
-            {isError ? '✕' : '?'}
+            {styles.icon}
           </div>
           <p style={{
             margin: 0,
@@ -39,13 +54,19 @@ export default function ConfirmDialog({ message, onConfirm, onCancel, type = 'co
           </p>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          {isError ? (
-            <button className="btn btn-danger" onClick={onConfirm}>确定</button>
-          ) : (
+          {isConfirm ? (
             <>
               <button className="btn btn-default" onClick={onCancel}>取消</button>
               <button className="btn btn-primary" onClick={onConfirm}>确认</button>
             </>
+          ) : (
+            <button
+              className="btn"
+              style={isSuccess ? { background: '#52c41a', color: '#fff', borderColor: '#52c41a' } : {}}
+              onClick={onConfirm}
+            >
+              确定
+            </button>
           )}
         </div>
       </div>

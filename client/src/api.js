@@ -12,6 +12,13 @@ export const skillsApi = {
   publish: (id, channelId) => api.post(`/skills/${id}/publish`, { channelId }).then(r => r.data),
   unpublish: (id) => api.post(`/skills/${id}/unpublish`).then(r => r.data),
   records: (id) => api.get(`/skills/${id}/records`).then(r => r.data),
+  importZip: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/skills/import-zip', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }).then(r => r.data);
+  },
 
   // Assets
   listAssets: (id) => api.get(`/skills/${id}/assets`).then(r => r.data),
@@ -35,6 +42,23 @@ export const skillsApi = {
   getReference: (id, filename) => api.get(`/skills/${id}/references/${encodeURIComponent(filename)}`).then(r => r.data),
   saveReference: (id, filename, content) => api.put(`/skills/${id}/references/${encodeURIComponent(filename)}`, { content }).then(r => r.data),
   deleteReference: (id, filename) => api.delete(`/skills/${id}/references/${encodeURIComponent(filename)}`).then(r => r.data),
+
+  // Custom Directories
+  listCustomDirs: (id) => api.get(`/skills/${id}/custom-dirs`).then(r => r.data),
+  createCustomDir: (id, data) => api.post(`/skills/${id}/custom-dirs`, data).then(r => r.data),
+  renameCustomDir: (id, dirId, name) => api.put(`/skills/${id}/custom-dirs/${dirId}`, { name }).then(r => r.data),
+  deleteCustomDir: (id, dirId) => api.delete(`/skills/${id}/custom-dirs/${dirId}`).then(r => r.data),
+  listCustomDirFiles: (id, dirPath) => api.get(`/skills/${id}/custom-dirs/${encodeURIComponent(dirPath)}/files`).then(r => r.data),
+  getCustomFile: (id, filePath) => api.get(`/skills/${id}/custom-files/${encodeURIComponent(filePath)}`).then(r => r.data),
+  saveCustomFile: (id, filePath, content) => api.put(`/skills/${id}/custom-files/${encodeURIComponent(filePath)}`, { content }).then(r => r.data),
+  deleteCustomFile: (id, filePath) => api.delete(`/skills/${id}/custom-files/${encodeURIComponent(filePath)}`).then(r => r.data),
+  uploadCustomFile: (id, dirPath, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/skills/${id}/custom-dirs/${encodeURIComponent(dirPath)}/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }).then(r => r.data);
+  },
 };
 
 export const channelsApi = {

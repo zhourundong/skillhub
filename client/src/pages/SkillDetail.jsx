@@ -6,6 +6,7 @@ import AssetManager from '../components/AssetManager';
 import TextFileManager from '../components/TextFileManager';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SkillPreview from '../components/SkillPreview';
+import CustomDirManager from '../components/CustomDirManager';
 
 const STATUS_MAP = { draft: '草稿', published: '已发布', unpublished: '已下架' };
 
@@ -201,6 +202,12 @@ export default function SkillDetail() {
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginBottom: 12, fontSize: 16 }}>静态资源 (assets/)</h3>
         <AssetManager skillId={id} readonly={isReadonly} />
+      </div>
+
+      {/* Custom Directories */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3 style={{ marginBottom: 12, fontSize: 16 }}>自定义目录</h3>
+        <CustomDirManager skillId={id} readonly={isReadonly} />
       </div>
 
       {records.length > 0 && (

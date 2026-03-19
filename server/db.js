@@ -135,6 +135,57 @@ function saveChannels(channels) {
   fs.writeFileSync(channelsFile, JSON.stringify(channels, null, 2), 'utf-8');
 }
 
+// 系统保留目录名
+const RESERVED_DIRS = ['scripts', 'references', 'assets'];
+
+// 检查目录名是否有效
+function isValidCustomDirName(name) {
+  if (!name || typeof name !== 'string') return false;
+  // 不能是保留目录名
+  if (RESERVED_DIRS.includes(name.toLowerCase())) return false;
+  // 只允许字母、数字、下划线、中划线
+  if (!/^[a-zA-Z0-9_-]+$/.test(name)) return false;
+  return true;
+}
+
+// 获取自定义目录配置文件路径
+function getCustomDirsConfigPath(skillId) {
+  return path.join(getSkillDir(skillId), 'custom_dirs.json');
+}
+
+// 读取自定义目录配置
+function readCustomDirsConfig(skillId) {
+  const configPath = getCustomDirsConfigPath(skillId);
+  if (!fs.existsSync(configPath)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+// 保存自定义目录配置
+function saveCustomDirsConfig(skillId, dirs) {
+  const configPath = getCustomDirsConfigPath(skillId);
+  fs.writeFileSync(configPath, JSON.stringify(dirs, null, 2), 'utf-8');
+}
+
+// 检查目录路径是否与已有目录冲突
+function checkDirPathConflict(skillId, dirPath, excludeId = null) {
+  const dirs = readCustomDirsConfig(skillId);
+  for (const dir of dirs) {
+    if (excludeId && dir.id === excludeId) continue;
+    // 冲突条件：
+    // 1. 相同路径
+    // 2. 新路径是已有路径的父目录（会导致嵌套冲突）
+    // 注意：新路径作为已有路径的子目录是允许的
+    if (dir.path === dirPath || dir.path.startsWith(dirPath + '/')) {
+      return dir;
+    }
+  }
+  return null;
+}
+
 // Database-like API
 const db = {
   // Skills
@@ -452,7 +503,278 @@ const db = {
     fs.writeFileSync(recordsFile, JSON.stringify(updated, null, 2), 'utf-8');
 
     return records.filter(r => r.skill_id === skillId && r.status === 'unpublished');
-  }
+  },
+
+  // ========== Custom Directories ==========
+  // 获取自定义目录列表
+  listCustomDirs(skillId) {
+    return readCustomDirsConfig(skillId);
+  },
+
+  // 创建自定义目录
+  createCustomDir(skillId, data) {
+    const { name, parentPath = '' } = data;
+
+    if (!isValidCustomDirName(name)) {
+      throw new Error('目录名无效，只能包含字母、数字、下划线、中划线，且不能与系统目录重名');
+    }
+
+    // 检查目录层级，最多三级
+    const currentLevel = parentPath ? parentPath.split('/').length : 0;
+    if (currentLevel >= 3) {
+      throw new Error('目录层级最多支持三级');
+    }
+
+    const dirPath = parentPath ? `${parentPath}/${name}` : name;
+
+    // 检查路径冲突
+    const conflict = checkDirPathConflict(skillId, dirPath);
+    if (conflict) {
+      throw new Error(`目录路径与已有目录「${conflict.name}」冲突`);
+    }
+
+    const dirs = readCustomDirsConfig(skillId);
+    const dir = {
+      id: uuidv4(),
+      name,
+      path: dirPath,
+      parentPath,
+      created_at: new Date().toISOString()
+    };
+    dirs.push(dir);
+    saveCustomDirsConfig(skillId, dirs);
+
+    // 创建物理目录
+    const physicalDir = path.join(getSkillDir(skillId), dirPath);
+    fs.mkdirSync(physicalDir, { recursive: true });
+
+    return dir;
+  },
+
+  // 删除自定义目录（包括子目录和文件）
+  deleteCustomDir(skillId, dirId) {
+    const dirs = readCustomDirsConfig(skillId);
+    const dir = dirs.find(d => d.id === dirId);
+    if (!dir) return false;
+
+    // 删除物理目录
+    const physicalDir = path.join(getSkillDir(skillId), dir.path);
+    if (fs.existsSync(physicalDir)) {
+      fs.rmSync(physicalDir, { recursive: true, force: true });
+    }
+
+    // 删除配置中的目录及其子目录
+    const filtered = dirs.filter(d => {
+      // 不是自己，也不是子目录
+      return d.id !== dirId && !d.path.startsWith(dir.path + '/');
+    });
+    saveCustomDirsConfig(skillId, filtered);
+
+    return true;
+  },
+
+  // 重命名自定义目录
+  renameCustomDir(skillId, dirId, newName) {
+    if (!isValidCustomDirName(newName)) {
+      throw new Error('目录名无效，只能包含字母、数字、下划线、中划线，且不能与系统目录重名');
+    }
+
+    const dirs = readCustomDirsConfig(skillId);
+    const dir = dirs.find(d => d.id === dirId);
+    if (!dir) return null;
+
+    const oldPath = dir.path;
+    const newPath = dir.parentPath ? `${dir.parentPath}/${newName}` : newName;
+
+    // 检查新路径是否冲突
+    const conflict = checkDirPathConflict(skillId, newPath, dirId);
+    if (conflict) {
+      throw new Error(`目录路径与已有目录「${conflict.name}」冲突`);
+    }
+
+    // 重命名物理目录
+    const oldPhysicalDir = path.join(getSkillDir(skillId), oldPath);
+    const newPhysicalDir = path.join(getSkillDir(skillId), newPath);
+    if (fs.existsSync(oldPhysicalDir)) {
+      // 先创建父目录
+      fs.mkdirSync(path.dirname(newPhysicalDir), { recursive: true });
+      fs.renameSync(oldPhysicalDir, newPhysicalDir);
+    }
+
+    // 更新配置
+    const updated = dirs.map(d => {
+      if (d.id === dirId) {
+        return { ...d, name: newName, path: newPath };
+      }
+      // 更新子目录路径
+      if (d.path.startsWith(oldPath + '/')) {
+        return {
+          ...d,
+          path: d.path.replace(oldPath + '/', newPath + '/'),
+          parentPath: d.parentPath.replace(oldPath, newPath)
+        };
+      }
+      return d;
+    });
+    saveCustomDirsConfig(skillId, updated);
+
+    return updated.find(d => d.id === dirId);
+  },
+
+  // 列出自定义目录中的文件（支持递归列出子目录）
+  listCustomDirFiles(skillId, dirPath) {
+    const dir = path.join(getSkillDir(skillId), dirPath);
+    if (!fs.existsSync(dir)) return [];
+
+    const result = [];
+    const items = fs.readdirSync(dir);
+
+    for (const item of items) {
+      const itemPath = path.join(dir, item);
+      const stat = fs.statSync(itemPath);
+      // 使用正斜杠作为路径分隔符，保持跨平台一致性
+      const relativePath = dirPath ? `${dirPath}/${item}` : item;
+
+      if (stat.isDirectory()) {
+        // 递归列出子目录
+        const subFiles = this.listCustomDirFiles(skillId, relativePath);
+        result.push(...subFiles);
+      } else {
+        result.push({
+          name: item,
+          path: relativePath,
+          size: stat.size,
+          isEditable: this.isEditableFile(item),
+          updated_at: stat.mtime.toISOString()
+        });
+      }
+    }
+
+    return result;
+  },
+
+  // 可编辑的文本文件扩展名
+  EDITABLE_EXTENSIONS: [
+    // 文档类
+    'txt', 'md', 'markdown', 'rst', 'adoc',
+    // 代码/脚本
+    'py', 'js', 'ts', 'jsx', 'tsx', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
+    'rb', 'pl', 'lua', 'php', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs',
+    'swift', 'kt', 'scala', 'r', 'sql', 'vue', 'svelte',
+    // 配置/数据
+    'json', 'yaml', 'yml', 'xml', 'toml', 'ini', 'env', 'cfg', 'conf',
+    'properties', 'gitignore', 'dockerignore', 'editorconfig',
+    // 样式/标记
+    'html', 'htm', 'css', 'scss', 'sass', 'less', 'styl',
+    // 其他文本
+    'log', 'csv', 'tsv'
+  ],
+
+  // 检查文件是否可编辑
+  isEditableFile(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    return this.EDITABLE_EXTENSIONS.includes(ext);
+  },
+
+  // 获取自定义目录中的文件
+  getCustomDirFile(skillId, filePath) {
+    const fullPath = path.join(getSkillDir(skillId), filePath);
+    if (!fs.existsSync(fullPath)) return null;
+
+    // 安全检查：确保路径在 skill 目录内
+    const skillDir = getSkillDir(skillId);
+    const resolved = path.resolve(fullPath);
+    if (!resolved.startsWith(skillDir)) {
+      throw new Error('非法路径');
+    }
+
+    const stat = fs.statSync(fullPath);
+    if (stat.isDirectory()) return null;
+
+    const filename = path.basename(filePath);
+    const isEditable = this.isEditableFile(filename);
+
+    const result = {
+      name: filename,
+      path: filePath,
+      size: stat.size,
+      isEditable,
+      updated_at: stat.mtime.toISOString()
+    };
+
+    // 只有可编辑文件才返回内容
+    if (isEditable) {
+      result.content = fs.readFileSync(fullPath, 'utf-8');
+    }
+
+    return result;
+  },
+
+  // 保存文件到自定义目录
+  saveCustomDirFile(skillId, filePath, content) {
+    const fullPath = path.join(getSkillDir(skillId), filePath);
+
+    // 安全检查：确保路径在 skill 目录内
+    const skillDir = getSkillDir(skillId);
+    const resolved = path.resolve(fullPath);
+    if (!resolved.startsWith(skillDir)) {
+      throw new Error('非法路径');
+    }
+
+    // 创建父目录
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, content || '', 'utf-8');
+
+    return {
+      name: path.basename(filePath),
+      path: filePath,
+      size: (content || '').length
+    };
+  },
+
+  // 删除自定义目录中的文件
+  deleteCustomDirFile(skillId, filePath) {
+    const fullPath = path.join(getSkillDir(skillId), filePath);
+
+    // 安全检查
+    const skillDir = getSkillDir(skillId);
+    const resolved = path.resolve(fullPath);
+    if (!resolved.startsWith(skillDir)) {
+      throw new Error('非法路径');
+    }
+
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+      return true;
+    }
+    return false;
+  },
+
+  // 上传文件到自定义目录
+  uploadCustomDirFile(skillId, dirPath, filename, buffer) {
+    const safeFilename = path.basename(filename);
+    const fullPath = path.join(getSkillDir(skillId), dirPath, safeFilename);
+
+    // 安全检查
+    const skillDir = getSkillDir(skillId);
+    const resolved = path.resolve(fullPath);
+    if (!resolved.startsWith(skillDir)) {
+      throw new Error('非法路径');
+    }
+
+    // 确保目录存在
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, buffer);
+
+    return {
+      name: safeFilename,
+      path: dirPath ? `${dirPath}/${safeFilename}` : safeFilename,
+      size: buffer.length
+    };
+  },
+
+  // 暴露 parseFrontmatter 供其他模块使用
+  parseFrontmatter
 };
 
 module.exports = db;

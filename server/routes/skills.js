@@ -3,6 +3,8 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const archiver = require('archiver');
+const AdmZip = require('adm-zip');
+const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 
 const router = express.Router();
@@ -31,6 +33,162 @@ router.get('/', (req, res) => {
   const { status, category, keyword } = req.query;
   const skills = db.listSkills({ status, category, keyword });
   res.json({ data: skills });
+});
+
+// 导入 ZIP 创建 Skill
+router.post('/import-zip', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: '请选择 ZIP 文件' });
+
+  try {
+    const zip = new AdmZip(req.file.buffer);
+    const zipEntries = zip.getEntries();
+
+    // 查找 SKILL.md 文件
+    let skillMdEntry = null;
+    let skillMdPath = '';
+    for (const entry of zipEntries) {
+      if (!entry.isDirectory && entry.entryName.endsWith('SKILL.md')) {
+        skillMdEntry = entry;
+        skillMdPath = entry.entryName;
+        break;
+      }
+    }
+
+    if (!skillMdEntry) {
+      return res.status(400).json({ error: 'ZIP 文件中未找到 SKILL.md 文件' });
+    }
+
+    // 解析 SKILL.md 内容
+    const skillMdContent = skillMdEntry.getData().toString('utf-8');
+    const { frontmatter, body } = db.parseFrontmatter(skillMdContent);
+
+    if (!frontmatter.name || !frontmatter.description) {
+      return res.status(400).json({ error: 'SKILL.md 的 YAML 头必须包含 name 和 description 字段' });
+    }
+
+    // 检查名称是否重复
+    const existing = db.findSkillByName(frontmatter.name);
+    if (existing) {
+      return res.status(400).json({ error: `技能名称「${frontmatter.name}」已存在` });
+    }
+
+    // 创建 Skill
+    const skill = db.createSkill({
+      name: frontmatter.name,
+      description: frontmatter.description || '',
+      category: frontmatter.category || '',
+      skill_content: body
+    });
+
+    const skillId = skill.id;
+    const skillDir = path.join(__dirname, '..', '..', 'skills', skillId);
+
+    // 获取 ZIP 中 SKILL.md 所在的目录前缀
+    const basePath = skillMdPath.includes('/')
+      ? skillMdPath.substring(0, skillMdPath.lastIndexOf('/'))
+      : '';
+
+    console.log('[Import ZIP] basePath:', basePath);
+
+    // 收集所有目录路径
+    const allDirs = new Set();
+
+    // 解压其他文件
+    const importedFiles = [];
+    for (const entry of zipEntries) {
+      if (entry.isDirectory) {
+        // 记录目录
+        let dirPath = entry.entryName;
+        if (basePath && dirPath.startsWith(basePath + '/')) {
+          dirPath = dirPath.substring(basePath.length + 1);
+        }
+        if (dirPath && dirPath.includes('/')) {
+          allDirs.add(dirPath.replace(/\/$/, '')); // 移除末尾斜杠
+        }
+        continue;
+      }
+      if (entry.entryName === skillMdPath) continue; // SKILL.md 已经处理过
+
+      // 计算相对路径
+      let relativePath = entry.entryName;
+      if (basePath && relativePath.startsWith(basePath + '/')) {
+        relativePath = relativePath.substring(basePath.length + 1);
+      }
+
+      // 跳过根目录文件和特定文件
+      if (!relativePath.includes('/')) continue;
+      if (relativePath === 'metadata.json' || relativePath === 'custom_dirs.json') continue;
+
+      const fullPath = path.join(skillDir, relativePath);
+
+      // 安全检查
+      const resolved = path.resolve(fullPath);
+      if (!resolved.startsWith(skillDir)) continue;
+
+      // 创建父目录并写入文件
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      const content = entry.getData();
+      fs.writeFileSync(fullPath, content);
+
+      importedFiles.push(relativePath);
+
+      // 从文件路径提取目录结构
+      const parts = relativePath.split('/');
+      for (let i = 1; i < parts.length; i++) {
+        const dirPath = parts.slice(0, i).join('/');
+        allDirs.add(dirPath);
+      }
+    }
+
+    console.log('[Import ZIP] All dirs:', [...allDirs]);
+
+    // 识别自定义目录（非 scripts/references/assets）
+    const reservedDirs = ['scripts', 'references', 'assets'];
+
+    const customDirsConfig = [];
+    for (const dirPath of allDirs) {
+      const parts = dirPath.split('/');
+      const topDir = parts[0];
+
+      // 跳过保留目录
+      if (reservedDirs.includes(topDir)) continue;
+
+      // 跳过超过三级的目录
+      if (parts.length > 3) continue;
+
+      // 检查是否已存在
+      if (customDirsConfig.find(d => d.path === dirPath)) continue;
+
+      customDirsConfig.push({
+        id: uuidv4(),
+        name: parts[parts.length - 1], // 当前层级目录名
+        path: dirPath,
+        parentPath: parts.length > 1 ? parts.slice(0, -1).join('/') : '',
+        created_at: new Date().toISOString()
+      });
+    }
+
+    console.log('[Import ZIP] Custom dirs config:', customDirsConfig);
+
+    // 保存 custom_dirs.json
+    if (customDirsConfig.length > 0) {
+      const customDirsPath = path.join(skillDir, 'custom_dirs.json');
+      fs.writeFileSync(customDirsPath, JSON.stringify(customDirsConfig, null, 2), 'utf-8');
+      console.log('[Import ZIP] Saved custom_dirs.json:', customDirsPath);
+    }
+
+    res.status(201).json({
+      data: {
+        skill,
+        importedFiles,
+        totalFiles: importedFiles.length,
+        customDirs: customDirsConfig.map(d => d.path)
+      }
+    });
+  } catch (err) {
+    console.error('Import ZIP error:', err);
+    res.status(400).json({ error: 'ZIP 文件解析失败: ' + err.message });
+  }
 });
 
 // 获取单个 skill
@@ -166,23 +324,30 @@ router.get('/:id/download', (req, res) => {
 
   archive.pipe(res);
 
-  // 遍历目录，排除 metadata.json 和空目录
-  const files = fs.readdirSync(skillDir);
-  for (const file of files) {
-    if (file === 'metadata.json') continue;
+  // 排除的文件列表
+  const excludeFiles = ['metadata.json', 'custom_dirs.json'];
 
-    const filePath = path.join(skillDir, file);
-    const stat = fs.statSync(filePath);
+  // 递归添加目录内容
+  const addDirectory = (dirPath, zipPath) => {
+    const items = fs.readdirSync(dirPath);
+    for (const item of items) {
+      const fullPath = path.join(dirPath, item);
+      const stat = fs.statSync(fullPath);
 
-    if (stat.isDirectory()) {
-      // 检查目录是否为空
-      const dirFiles = fs.readdirSync(filePath);
-      if (dirFiles.length === 0) continue;
-      archive.directory(filePath, file);
-    } else {
-      archive.file(filePath, { name: file });
+      if (stat.isDirectory()) {
+        // 检查目录是否为空
+        const subItems = fs.readdirSync(fullPath);
+        if (subItems.length === 0) continue;
+        addDirectory(fullPath, zipPath ? `${zipPath}/${item}` : item);
+      } else {
+        // 排除特定文件
+        if (excludeFiles.includes(item)) continue;
+        archive.file(fullPath, { name: zipPath ? `${zipPath}/${item}` : item });
+      }
     }
-  }
+  };
+
+  addDirectory(skillDir, '');
 
   archive.finalize();
 });
@@ -308,6 +473,148 @@ router.delete('/:id/references/:filename', (req, res) => {
   const deleted = db.deleteTextFile(req.params.id, 'references', req.params.filename);
   if (!deleted) return res.status(404).json({ error: '文件不存在' });
   res.json({ message: '删除成功' });
+});
+
+// ========== Custom Directories ==========
+// 获取自定义目录列表
+router.get('/:id/custom-dirs', (req, res) => {
+  const skill = db.getSkill(req.params.id);
+  if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+  const dirs = db.listCustomDirs(req.params.id);
+  res.json({ data: dirs });
+});
+
+// 创建自定义目录
+router.post('/:id/custom-dirs', (req, res) => {
+  const skill = db.getSkill(req.params.id);
+  if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+  try {
+    const dir = db.createCustomDir(req.params.id, req.body);
+    res.status(201).json({ data: dir });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// 重命名自定义目录
+router.put('/:id/custom-dirs/:dirId', (req, res) => {
+  const skill = db.getSkill(req.params.id);
+  if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+  try {
+    const dir = db.renameCustomDir(req.params.id, req.params.dirId, req.body.name);
+    if (!dir) return res.status(404).json({ error: '目录不存在' });
+    res.json({ data: dir });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// 删除自定义目录
+router.delete('/:id/custom-dirs/:dirId', (req, res) => {
+  const skill = db.getSkill(req.params.id);
+  if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+  const deleted = db.deleteCustomDir(req.params.id, req.params.dirId);
+  if (!deleted) return res.status(404).json({ error: '目录不存在' });
+  res.json({ message: '删除成功' });
+});
+
+// 获取自定义目录中的文件列表
+router.get('/:id/custom-dirs/:dirPath(*)/files', (req, res) => {
+  const skill = db.getSkill(req.params.id);
+  if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+  const files = db.listCustomDirFiles(req.params.id, req.params.dirPath);
+  res.json({ data: files });
+});
+
+// 获取自定义目录中的文件
+router.get('/:id/custom-files/:filePath(*)', (req, res) => {
+  const skill = db.getSkill(req.params.id);
+  if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+  const skillDir = path.join(__dirname, '..', '..', 'skills', req.params.id);
+  const filePath = path.join(skillDir, req.params.filePath);
+
+  // 安全检查
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(skillDir)) {
+    return res.status(400).json({ error: '非法路径' });
+  }
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: '文件不存在' });
+  }
+
+  const stat = fs.statSync(filePath);
+  if (stat.isDirectory()) {
+    return res.status(400).json({ error: '不能下载目录' });
+  }
+
+  const filename = path.basename(req.params.filePath);
+  const isEditable = db.isEditableFile(filename);
+
+  // 如果是可编辑文件且没有 download 参数，返回 JSON
+  if (isEditable && !req.query.download) {
+    try {
+      const file = db.getCustomDirFile(req.params.id, req.params.filePath);
+      return res.json({ data: file });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  }
+
+  // 否则返回文件下载
+  res.download(filePath);
+});
+
+// 创建/更新自定义目录中的文件
+router.put('/:id/custom-files/:filePath(*)', (req, res) => {
+  const skill = db.getSkill(req.params.id);
+  if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+  const { content } = req.body;
+  if (content === undefined) return res.status(400).json({ error: '内容不能为空' });
+
+  try {
+    const file = db.saveCustomDirFile(req.params.id, req.params.filePath, content);
+    res.json({ data: file });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// 删除自定义目录中的文件
+router.delete('/:id/custom-files/:filePath(*)', (req, res) => {
+  const skill = db.getSkill(req.params.id);
+  if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+  try {
+    const deleted = db.deleteCustomDirFile(req.params.id, req.params.filePath);
+    if (!deleted) return res.status(404).json({ error: '文件不存在' });
+    res.json({ message: '删除成功' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// 上传文件到自定义目录
+router.post('/:id/custom-dirs/:dirPath(*)/upload', upload.single('file'), (req, res) => {
+  const skill = db.getSkill(req.params.id);
+  if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+  if (!req.file) return res.status(400).json({ error: '请选择文件' });
+
+  try {
+    const filename = decodeFilename(req.file.originalname);
+    const file = db.uploadCustomDirFile(req.params.id, req.params.dirPath, filename, req.file.buffer);
+    res.status(201).json({ data: file });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 module.exports = router;

@@ -61,6 +61,40 @@ export default function SkillList() {
     }
   };
 
+  const handleImportZip = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      setConfirm({ message: '只支持 .zip 文件', onConfirm: () => setConfirm(null), type: 'error' });
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setConfirm({ message: 'ZIP 文件大小不能超过 10MB', onConfirm: () => setConfirm(null), type: 'error' });
+      e.target.value = '';
+      return;
+    }
+
+    try {
+      const res = await skillsApi.importZip(file);
+      setConfirm({
+        message: `导入成功！\n\n技能名称: ${res.data.skill.name}\n导入文件数: ${res.data.totalFiles}`,
+        onConfirm: () => setConfirm(null),
+        type: 'success'
+      });
+      load();
+    } catch (err) {
+      setConfirm({
+        message: err.response?.data?.error || err.message || '导入失败',
+        onConfirm: () => setConfirm(null),
+        type: 'error'
+      });
+    }
+    e.target.value = '';
+  };
+
   return (
     <>
       <div className="toolbar-wrapper">
@@ -85,8 +119,12 @@ export default function SkillList() {
               </select>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-default" onClick={() => setShowAi(true)}>AI 生成</button>
-              <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ 创建 Skill</button>
+              <label className="btn" style={{ cursor: 'pointer', background: '#722ed1', color: '#fff', borderColor: '#722ed1' }}>
+                📦 导入 ZIP
+                <input type="file" accept=".zip" onChange={handleImportZip} style={{ display: 'none' }} />
+              </label>
+              <button className="btn" style={{ background: '#13c2c2', color: '#fff', borderColor: '#13c2c2' }} onClick={() => setShowAi(true)}>✨ AI 生成</button>
+              <button className="btn" style={{ background: '#1890ff', color: '#fff', borderColor: '#1890ff' }} onClick={() => setShowForm(true)}>+ 创建 Skill</button>
             </div>
           </div>
         </div>
@@ -96,7 +134,11 @@ export default function SkillList() {
         <div className="empty">
           <p>暂无 Skill</p>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-default" onClick={() => setShowAi(true)}>AI 生成</button>
+            <label className="btn" style={{ cursor: 'pointer', background: '#722ed1', color: '#fff', borderColor: '#722ed1' }}>
+              📦 导入 ZIP
+              <input type="file" accept=".zip" onChange={handleImportZip} style={{ display: 'none' }} />
+            </label>
+            <button className="btn" style={{ background: '#13c2c2', color: '#fff', borderColor: '#13c2c2' }} onClick={() => setShowAi(true)}>✨ AI 生成</button>
             <button className="btn btn-primary" onClick={() => setShowForm(true)}>创建第一个 Skill</button>
           </div>
         </div>
