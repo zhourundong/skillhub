@@ -245,11 +245,45 @@ function isValidSkill(parsed) {
     typeof parsed.skill_content === 'string' && parsed.skill_content.trim();
 }
 
+/**
+ * 清理文本中的过度转义字符
+ * 例如：将 \\" 转换为 "，将 \\\n 转换为 \n
+ */
+function cleanEscapedText(text) {
+  if (typeof text !== 'string') return text;
+
+  // 处理常见的过度转义情况
+  // \\" -> "
+  // \\' -> '
+  // \\n -> 实际换行（如果是在字符串中表示换行）
+  // \\\\ -> \\
+
+  let result = text;
+
+  // 将 \\" 替换为 "（但保留 \" 用于 JSON 字符串中的引号）
+  result = result.replace(/\\+"/g, '"');
+
+  // 将 \\' 替换为 '
+  result = result.replace(/\\+'/g, "'");
+
+  // 将连续多个反斜杠减少到合理的数量
+  // \\\\\\\\ -> \\
+  result = result.replace(/\\{4,}/g, '\\\\');
+
+  // 处理 \\\n（反斜杠后跟实际换行，通常是错误）
+  result = result.replace(/\\\n/g, '\n');
+
+  return result;
+}
+
 function fillDefaults(parsed) {
   const result = { ...DEFAULT_SKILL };
   for (const field of REQUIRED_FIELDS) {
     if (parsed[field] !== undefined && parsed[field] !== null) {
-      result[field] = String(parsed[field]);
+      let value = String(parsed[field]);
+      // 清理过度转义的字符
+      value = cleanEscapedText(value);
+      result[field] = value;
     }
   }
   return result;

@@ -24,7 +24,8 @@ class GitHubChannel extends BaseChannel {
     this.repo = config.repo || '';
     this.branch = config.branch || 'main';
     this.token = config.token || '';
-    this.basePath = config.basePath || ''; // 仓库中的目标路径，如 'skills'
+    // 清理 basePath，移除开头/结尾的斜杠
+    this.basePath = (config.basePath || '').replace(/^\/+/, '').replace(/\/+$/, '');
     this.commitMessage = config.commitMessage || 'Update skill: {name}';
 
     // 解析完整 GitHub URL
@@ -52,10 +53,25 @@ class GitHubChannel extends BaseChannel {
   }
 
   /**
+   * 构建完整的 GitHub 路径（移除开头斜杠，清理多余斜杠）
+   */
+  buildPath(filePath) {
+    const parts = [];
+    if (this.basePath) parts.push(this.basePath);
+    if (filePath) parts.push(filePath);
+    return parts
+      .join('/')
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '')
+      .replace(/\/+/g, '/');
+  }
+
+  /**
    * 获取文件的 SHA（用于更新已有文件）
    */
   async getFileSha(filePath) {
-    const url = `${this.apiBase}/repos/${this.owner}/${this.repo}/contents/${filePath}?ref=${this.branch}`;
+    const fullPath = this.buildPath(filePath);
+    const url = `${this.apiBase}/repos/${this.owner}/${this.repo}/contents/${fullPath}?ref=${this.branch}`;
     try {
       const response = await fetch(url, {
         method: 'GET',
@@ -75,7 +91,7 @@ class GitHubChannel extends BaseChannel {
    * 上传单个文件到 GitHub
    */
   async uploadFile(filePath, content, isBinary = false) {
-    const fullPath = this.basePath ? `${this.basePath}/${filePath}` : filePath;
+    const fullPath = this.buildPath(filePath);
     const sha = await this.getFileSha(fullPath);
 
     // 编码内容
@@ -112,7 +128,7 @@ class GitHubChannel extends BaseChannel {
    * 删除 GitHub 上的文件
    */
   async deleteFile(filePath, sha = null) {
-    const fullPath = this.basePath ? `${this.basePath}/${filePath}` : filePath;
+    const fullPath = this.buildPath(filePath);
     if (!sha) {
       sha = await this.getFileSha(fullPath);
     }
@@ -139,9 +155,7 @@ class GitHubChannel extends BaseChannel {
    * 获取仓库中目录下的所有文件
    */
   async listFiles(dirPath = '') {
-    const fullPath = this.basePath
-      ? (dirPath ? `${this.basePath}/${dirPath}` : this.basePath)
-      : dirPath;
+    const fullPath = this.buildPath(dirPath);
     const url = `${this.apiBase}/repos/${this.owner}/${this.repo}/contents/${fullPath}?ref=${this.branch}`;
 
     try {
@@ -223,16 +237,20 @@ class GitHubChannel extends BaseChannel {
     // 开始上传
     await uploadDir(skillDir, skillBasePath);
 
+    // 构建返回 URL
+    const urlPath = this.basePath ? `${this.basePath}/${skillBasePath}` : skillBasePath;
+
+    // 如果有错误，抛出异常让调用方知道
     if (errors.length > 0) {
       console.error('[GitHub Channel] Upload errors:', errors);
+      throw new Error(`上传失败: ${errors.join('; ')}`);
     }
 
     return {
       success: true,
-      url: `https://github.com/${this.owner}/${this.repo}/tree/${this.branch}/${this.basePath ? this.basePath + '/' : ''}${skillBasePath}`,
+      url: `https://github.com/${this.owner}/${this.repo}/tree/${this.branch}/${urlPath}`,
       dirName: skillBasePath,
-      files: uploadedFiles,
-      errors: errors.length > 0 ? errors : undefined
+      files: uploadedFiles
     };
   }
 

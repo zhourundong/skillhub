@@ -212,15 +212,7 @@ export default function SkillList() {
 
       {pagination.total === 0 ? (
         <div className="empty">
-          <p>暂无 Skill</p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <label className="btn" style={{ cursor: 'pointer', background: '#722ed1', color: '#fff', borderColor: '#722ed1' }}>
-              📦 导入 ZIP
-              <input type="file" accept=".zip" onChange={handleImportZip} style={{ display: 'none' }} />
-            </label>
-            <button className="btn" style={{ background: '#13c2c2', color: '#fff', borderColor: '#13c2c2' }} onClick={() => setShowAi(true)}>✨ AI 生成</button>
-            <button className="btn" style={{ background: '#1890ff', color: '#fff', borderColor: '#1890ff' }} onClick={() => setShowForm(true)}>✏️ 创建第一个 Skill</button>
-          </div>
+          <p>暂无 Skill，点击右上角按钮创建</p>
         </div>
       ) : (
         <>

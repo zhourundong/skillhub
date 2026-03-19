@@ -1,38 +1,48 @@
 const path = require('path');
 const fs = require('fs');
+const mysql = require('mysql2/promise');
 const { v4: uuidv4 } = require('uuid');
 
-const skillsDir = path.join(__dirname, '..', 'skills');
-const channelsFile = path.join(__dirname, '..', 'data', 'channels.json');
+// Table names with prefix
+const TABLES = {
+  skills: 't_sh_skills',
+  channels: 't_sh_channels',
+  publish_records: 't_sh_publish_records',
+  custom_dirs: 't_sh_custom_dirs',
+  skill_files: 't_sh_skill_files'
+};
 
-// Ensure directories exist
+// File system paths
+const skillsDir = path.join(__dirname, '..', 'skills');
+
+// Ensure skills directory exists
 if (!fs.existsSync(skillsDir)) {
   fs.mkdirSync(skillsDir, { recursive: true });
 }
-if (!fs.existsSync(path.dirname(channelsFile))) {
-  fs.mkdirSync(path.dirname(channelsFile), { recursive: true });
+
+// Database connection pool
+let pool = null;
+
+// Get or create connection pool
+function getPool() {
+  if (!pool) {
+    pool = mysql.createPool({
+      host: process.env.MYSQL_HOST || 'localhost',
+      port: process.env.MYSQL_PORT || 3306,
+      user: process.env.MYSQL_USER || 'root',
+      password: process.env.MYSQL_PASSWORD || '',
+      database: process.env.MYSQL_DATABASE || 'skillhub',
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0
+    });
+  }
+  return pool;
 }
 
 // Helper: get skill directory
 function getSkillDir(id) {
   return path.join(skillsDir, id);
-}
-
-// Helper: read metadata.json (only id, version, category, status, timestamps)
-function readMetadata(skillDir) {
-  const metaPath = path.join(skillDir, 'metadata.json');
-  if (!fs.existsSync(metaPath)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-  } catch {
-    return null;
-  }
-}
-
-// Helper: write metadata.json
-function writeMetadata(skillDir, metadata) {
-  const metaPath = path.join(skillDir, 'metadata.json');
-  fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf-8');
 }
 
 // Helper: parse YAML frontmatter from content
@@ -47,7 +57,6 @@ function parseFrontmatter(content) {
     if (colonIdx > 0) {
       const key = line.slice(0, colonIdx).trim();
       let value = line.slice(colonIdx + 1).trim();
-      // Remove quotes if present
       if ((value.startsWith('"') && value.endsWith('"')) ||
           (value.startsWith("'") && value.endsWith("'"))) {
         value = value.slice(1, -1);
@@ -70,154 +79,118 @@ function generateFrontmatter(name, description) {
   return `---\nname: ${escapeYaml(name)}\ndescription: ${escapeYaml(description)}\n---\n`;
 }
 
-// Helper: read SKILL.md and extract name, description, content
-function readSkillFile(skillDir) {
-  const skillPath = path.join(skillDir, 'SKILL.md');
-  if (!fs.existsSync(skillPath)) {
-    return { name: '', description: '', content: '' };
-  }
-  const raw = fs.readFileSync(skillPath, 'utf-8');
-  const { frontmatter, body } = parseFrontmatter(raw);
-  return {
-    name: frontmatter.name || '',
-    description: frontmatter.description || '',
-    content: body
+// ========== Skill Files Table Helpers ==========
+// Map subdir to file type
+function getFileType(subdir) {
+  const typeMap = {
+    'scripts': 'script',
+    'references': 'reference',
+    'assets': 'asset'
   };
+  return typeMap[subdir] || 'custom';
 }
 
-// Helper: write SKILL.md with frontmatter
-function writeSkillFile(skillDir, name, description, content) {
-  const skillPath = path.join(skillDir, 'SKILL.md');
-  const frontmatter = generateFrontmatter(name, description);
-  fs.writeFileSync(skillPath, frontmatter + (content || ''), 'utf-8');
-}
+// Insert or update file record
+async function upsertFileRecord(skillId, type, filename, filePath, size, isEditable) {
+  const pool = getPool();
+  const id = uuidv4();
+  const now = new Date();
 
-// Helper: get raw SKILL.md content (with frontmatter)
-function getRawSkillFile(skillDir) {
-  const skillPath = path.join(skillDir, 'SKILL.md');
-  if (!fs.existsSync(skillPath)) return '';
-  return fs.readFileSync(skillPath, 'utf-8');
-}
+  // Use INSERT ... ON DUPLICATE KEY UPDATE
+  // First check if record exists
+  const [existing] = await pool.execute(
+    `SELECT id FROM ${TABLES.skill_files} WHERE skill_id = ? AND path = ?`,
+    [skillId, filePath]
+  );
 
-// Helper: get full skill data
-function getSkillData(skillDir) {
-  const metadata = readMetadata(skillDir);
-  if (!metadata) return null;
-
-  const skill = readSkillFile(skillDir);
-  return {
-    ...metadata,
-    name: skill.name || metadata.name || '',
-    description: skill.description || metadata.description || '',
-    skill_content: skill.content
-  };
-}
-
-// Helper: load channels
-function loadChannels() {
-  if (!fs.existsSync(channelsFile)) {
-    const defaultChannel = {
-      id: uuidv4(),
-      name: '本地发布',
-      type: 'local',
-      config: { outputDir: './published_skills' },
-      enabled: true,
-      created_at: new Date().toISOString()
-    };
-    fs.writeFileSync(channelsFile, JSON.stringify([defaultChannel], null, 2), 'utf-8');
-    return [defaultChannel];
-  }
-  return JSON.parse(fs.readFileSync(channelsFile, 'utf-8'));
-}
-
-// Helper: save channels
-function saveChannels(channels) {
-  fs.writeFileSync(channelsFile, JSON.stringify(channels, null, 2), 'utf-8');
-}
-
-// 系统保留目录名
-const RESERVED_DIRS = ['scripts', 'references', 'assets'];
-
-// 检查目录名是否有效
-function isValidCustomDirName(name) {
-  if (!name || typeof name !== 'string') return false;
-  // 不能是保留目录名
-  if (RESERVED_DIRS.includes(name.toLowerCase())) return false;
-  // 只允许字母、数字、下划线、中划线
-  if (!/^[a-zA-Z0-9_-]+$/.test(name)) return false;
-  return true;
-}
-
-// 获取自定义目录配置文件路径
-function getCustomDirsConfigPath(skillId) {
-  return path.join(getSkillDir(skillId), 'custom_dirs.json');
-}
-
-// 读取自定义目录配置
-function readCustomDirsConfig(skillId) {
-  const configPath = getCustomDirsConfigPath(skillId);
-  if (!fs.existsSync(configPath)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  } catch {
-    return [];
+  if (existing.length > 0) {
+    await pool.execute(
+      `UPDATE ${TABLES.skill_files} SET filename = ?, size = ?, is_editable = ?, updated_at = ? WHERE id = ?`,
+      [filename, size, isEditable ? 1 : 0, now, existing[0].id]
+    );
+    return existing[0].id;
+  } else {
+    await pool.execute(
+      `INSERT INTO ${TABLES.skill_files} (id, skill_id, type, filename, path, size, is_editable, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, skillId, type, filename, filePath, size, isEditable ? 1 : 0, now, now]
+    );
+    return id;
   }
 }
 
-// 保存自定义目录配置
-function saveCustomDirsConfig(skillId, dirs) {
-  const configPath = getCustomDirsConfigPath(skillId);
-  fs.writeFileSync(configPath, JSON.stringify(dirs, null, 2), 'utf-8');
+// Delete file record
+async function deleteFileRecord(skillId, filePath) {
+  const pool = getPool();
+  await pool.execute(
+    `DELETE FROM ${TABLES.skill_files} WHERE skill_id = ? AND path = ?`,
+    [skillId, filePath]
+  );
 }
 
-// 检查目录路径是否与已有目录冲突
-function checkDirPathConflict(skillId, dirPath, excludeId = null) {
-  const dirs = readCustomDirsConfig(skillId);
-  for (const dir of dirs) {
-    if (excludeId && dir.id === excludeId) continue;
-    // 冲突条件：
-    // 1. 相同路径
-    // 2. 新路径是已有路径的父目录（会导致嵌套冲突）
-    // 注意：新路径作为已有路径的子目录是允许的
-    if (dir.path === dirPath || dir.path.startsWith(dirPath + '/')) {
-      return dir;
-    }
-  }
-  return null;
+// Delete all file records for a skill
+async function deleteAllFileRecords(skillId) {
+  const pool = getPool();
+  await pool.execute(
+    `DELETE FROM ${TABLES.skill_files} WHERE skill_id = ?`,
+    [skillId]
+  );
 }
 
-// Database-like API
+// Database API
 const db = {
-  // Skills
-  listSkills({ status, category, keyword, page = 1, pageSize = 10 }) {
-    const skillDirs = fs.readdirSync(skillsDir).filter(f => {
-      const stat = fs.statSync(path.join(skillsDir, f));
-      return stat.isDirectory() && fs.existsSync(path.join(skillsDir, f, 'metadata.json'));
-    });
+  // Expose pool for external use (e.g., migration)
+  getPool,
 
-    let skills = skillDirs.map(dir => getSkillData(path.join(skillsDir, dir))).filter(Boolean);
+  // Close pool (for graceful shutdown)
+  async closePool() {
+    if (pool) {
+      await pool.end();
+      pool = null;
+    }
+  },
 
-    if (status) skills = skills.filter(s => s.status === status);
-    if (category) skills = skills.filter(s => s.category === category);
+  // ========== Skills ==========
+  async listSkills({ status, category, keyword, page = 1, pageSize = 10 }) {
+    const pool = getPool();
+    let sql = `SELECT * FROM ${TABLES.skills}`;
+    const params = [];
+    const conditions = [];
+
+    if (status) {
+      conditions.push('status = ?');
+      params.push(status);
+    }
+    if (category) {
+      conditions.push('category = ?');
+      params.push(category);
+    }
     if (keyword) {
-      const kw = keyword.toLowerCase();
-      skills = skills.filter(s =>
-        s.name.toLowerCase().includes(kw) ||
-        (s.description && s.description.toLowerCase().includes(kw))
-      );
+      conditions.push('(name LIKE ? OR description LIKE ?)');
+      const kw = `%${keyword}%`;
+      params.push(kw, kw);
     }
 
-    skills.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
 
-    // 分页
-    const total = skills.length;
+    // Count total
+    const countSql = sql.replace('SELECT *', 'SELECT COUNT(*) as total');
+    const [countRows] = await pool.execute(countSql, params);
+    const total = countRows[0].total;
     const totalPages = Math.ceil(total / pageSize);
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize;
-    const paginatedSkills = skills.slice(start, end);
+
+    // Get paginated results
+    // Note: LIMIT/OFFSET must be literal values in MySQL prepared statements
+    const limit = parseInt(pageSize, 10) || 10;
+    const offset = (parseInt(page, 10) - 1) * limit;
+    sql += ` ORDER BY updated_at DESC LIMIT ${limit} OFFSET ${offset}`;
+
+    const [rows] = await pool.execute(sql, params);
 
     return {
-      data: paginatedSkills,
+      data: rows,
       pagination: {
         page,
         pageSize,
@@ -227,24 +200,38 @@ const db = {
     };
   },
 
-  getSkill(id) {
+  async getSkill(id) {
+    const pool = getPool();
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.skills} WHERE id = ?`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  async findSkillByName(name, excludeId) {
+    const pool = getPool();
+    let sql = `SELECT * FROM ${TABLES.skills} WHERE name = ?`;
+    const params = [name];
+
+    if (excludeId) {
+      sql += ' AND id != ?';
+      params.push(excludeId);
+    }
+
+    const [rows] = await pool.execute(sql, params);
+    return rows[0] || null;
+  },
+
+  async getRawSkillFile(id) {
     const skillDir = getSkillDir(id);
-    if (!fs.existsSync(skillDir)) return null;
-    return getSkillData(skillDir);
+    const skillPath = path.join(skillDir, 'SKILL.md');
+    if (!fs.existsSync(skillPath)) return null;
+    return fs.readFileSync(skillPath, 'utf-8');
   },
 
-  findSkillByName(name, excludeId) {
-    const result = this.listSkills({ pageSize: 10000 }); // 获取所有技能
-    return result.data.find(s => s.name === name && s.id !== excludeId);
-  },
-
-  getRawSkillFile(id) {
-    const skillDir = getSkillDir(id);
-    if (!fs.existsSync(skillDir)) return null;
-    return getRawSkillFile(skillDir);
-  },
-
-  createSkill(data) {
+  async createSkill(data) {
+    const pool = getPool();
     const id = data.id || uuidv4();
     const skillDir = getSkillDir(id);
 
@@ -254,66 +241,109 @@ const db = {
     fs.mkdirSync(path.join(skillDir, 'references'), { recursive: true });
     fs.mkdirSync(path.join(skillDir, 'assets'), { recursive: true });
 
-    const now = new Date().toISOString();
-    const metadata = {
-      id,
-      version: data.version || '1.0.0',
-      category: data.category || '',
-      status: 'draft',
-      created_at: now,
-      updated_at: now
-    };
+    const now = new Date();
 
-    writeMetadata(skillDir, metadata);
-    writeSkillFile(skillDir, data.name || '', data.description || '', data.skill_content || '');
+    // Insert into database
+    await pool.execute(
+      `INSERT INTO ${TABLES.skills} (id, name, description, skill_content, version, category, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        data.name || '',
+        data.description || '',
+        data.skill_content || '',
+        data.version || '1.0.0',
+        data.category || '',
+        'draft',
+        now,
+        now
+      ]
+    );
 
-    return getSkillData(skillDir);
+    // Write SKILL.md file (for backward compatibility and export)
+    const skillPath = path.join(skillDir, 'SKILL.md');
+    const frontmatter = generateFrontmatter(data.name || '', data.description || '');
+    fs.writeFileSync(skillPath, frontmatter + (data.skill_content || ''), 'utf-8');
+
+    return this.getSkill(id);
   },
 
-  updateSkill(id, data) {
-    const skillDir = getSkillDir(id);
-    if (!fs.existsSync(skillDir)) return null;
+  async updateSkill(id, data) {
+    const pool = getPool();
+    const skill = await this.getSkill(id);
+    if (!skill) return null;
 
-    const metadata = readMetadata(skillDir);
-    if (!metadata) return null;
+    const now = new Date();
+    const updates = [];
+    const params = [];
 
-    // Read existing skill file
-    const skill = readSkillFile(skillDir);
-
-    // Update metadata
-    if (data.version !== undefined) metadata.version = data.version;
-    if (data.category !== undefined) metadata.category = data.category;
-    if (data.status !== undefined) metadata.status = data.status;
-    metadata.updated_at = new Date().toISOString();
-    writeMetadata(skillDir, metadata);
-
-    // Update SKILL.md if name/description/content changed
-    const newName = data.name !== undefined ? data.name : skill.name;
-    const newDesc = data.description !== undefined ? data.description : skill.description;
-    const newContent = data.skill_content !== undefined ? data.skill_content : skill.content;
-    writeSkillFile(skillDir, newName, newDesc, newContent);
-
-    return getSkillData(skillDir);
-  },
-
-  deleteSkill(id) {
-    const skillDir = getSkillDir(id);
-    if (!fs.existsSync(skillDir)) return false;
-
-    // Delete publish records
-    const recordsFile = path.join(__dirname, '..', 'data', 'publish_records.json');
-    if (fs.existsSync(recordsFile)) {
-      const records = JSON.parse(fs.readFileSync(recordsFile, 'utf-8'));
-      const filtered = records.filter(r => r.skill_id !== id);
-      fs.writeFileSync(recordsFile, JSON.stringify(filtered, null, 2), 'utf-8');
+    if (data.name !== undefined) {
+      updates.push('name = ?');
+      params.push(data.name);
+    }
+    if (data.description !== undefined) {
+      updates.push('description = ?');
+      params.push(data.description);
+    }
+    if (data.skill_content !== undefined) {
+      updates.push('skill_content = ?');
+      params.push(data.skill_content);
+    }
+    if (data.version !== undefined) {
+      updates.push('version = ?');
+      params.push(data.version);
+    }
+    if (data.category !== undefined) {
+      updates.push('category = ?');
+      params.push(data.category);
+    }
+    if (data.status !== undefined) {
+      updates.push('status = ?');
+      params.push(data.status);
     }
 
-    // Recursively delete directory
-    fs.rmSync(skillDir, { recursive: true, force: true });
+    if (updates.length > 0) {
+      updates.push('updated_at = ?');
+      params.push(now);
+      params.push(id);
+
+      await pool.execute(
+        `UPDATE ${TABLES.skills} SET ${updates.join(', ')} WHERE id = ?`,
+        params
+      );
+    }
+
+    // Update SKILL.md file
+    const updatedSkill = await this.getSkill(id);
+    const skillDir = getSkillDir(id);
+    const skillPath = path.join(skillDir, 'SKILL.md');
+    const frontmatter = generateFrontmatter(updatedSkill.name, updatedSkill.description);
+    fs.writeFileSync(skillPath, frontmatter + (updatedSkill.skill_content || ''), 'utf-8');
+
+    return updatedSkill;
+  },
+
+  async deleteSkill(id) {
+    const pool = getPool();
+
+    // Delete from database (cascade will delete related records)
+    const [result] = await pool.execute(
+      `DELETE FROM ${TABLES.skills} WHERE id = ?`,
+      [id]
+    );
+
+    if (result.affectedRows === 0) return false;
+
+    // Delete skill directory
+    const skillDir = getSkillDir(id);
+    if (fs.existsSync(skillDir)) {
+      fs.rmSync(skillDir, { recursive: true, force: true });
+    }
+
     return true;
   },
 
-  // Assets
+  // ========== Assets ==========
   listAssets(skillId) {
     const assetsDir = path.join(getSkillDir(skillId), 'assets');
     if (!fs.existsSync(assetsDir)) return [];
@@ -329,20 +359,30 @@ const db = {
     });
   },
 
-  saveAsset(skillId, filename, buffer) {
+  async saveAsset(skillId, filename, buffer) {
     const assetsDir = path.join(getSkillDir(skillId), 'assets');
     if (!fs.existsSync(assetsDir)) {
       fs.mkdirSync(assetsDir, { recursive: true });
     }
     const filePath = path.join(assetsDir, path.basename(filename));
     fs.writeFileSync(filePath, buffer);
+
+    // Update skill_files table
+    const relativePath = `assets/${path.basename(filename)}`;
+    await upsertFileRecord(skillId, 'asset', path.basename(filename), relativePath, buffer.length, false);
+
     return { name: path.basename(filename), size: buffer.length };
   },
 
-  deleteAsset(skillId, filename) {
+  async deleteAsset(skillId, filename) {
     const filePath = path.join(getSkillDir(skillId), 'assets', path.basename(filename));
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
+
+      // Update skill_files table
+      const relativePath = `assets/${path.basename(filename)}`;
+      await deleteFileRecord(skillId, relativePath);
+
       return true;
     }
     return false;
@@ -352,7 +392,7 @@ const db = {
     return path.join(getSkillDir(skillId), 'assets', path.basename(filename));
   },
 
-  // Generic text files (scripts, references)
+  // ========== Generic text files (scripts, references) ==========
   listTextFiles(skillId, subdir) {
     const dir = path.join(getSkillDir(skillId), subdir);
     if (!fs.existsSync(dir)) return [];
@@ -376,166 +416,268 @@ const db = {
     };
   },
 
-  saveTextFile(skillId, subdir, filename, content) {
+  async saveTextFile(skillId, subdir, filename, content) {
     const dir = path.join(getSkillDir(skillId), subdir);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
     const filePath = path.join(dir, path.basename(filename));
     fs.writeFileSync(filePath, content || '', 'utf-8');
+
+    // Update skill_files table
+    const relativePath = `${subdir}/${path.basename(filename)}`;
+    const type = getFileType(subdir);
+    await upsertFileRecord(skillId, type, path.basename(filename), relativePath, (content || '').length, true);
+
     return { name: path.basename(filename), size: (content || '').length };
   },
 
-  deleteTextFile(skillId, subdir, filename) {
+  async deleteTextFile(skillId, subdir, filename) {
     const filePath = path.join(getSkillDir(skillId), subdir, path.basename(filename));
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
+
+      // Update skill_files table
+      const relativePath = `${subdir}/${path.basename(filename)}`;
+      await deleteFileRecord(skillId, relativePath);
+
       return true;
     }
     return false;
   },
 
-  // Channels
-  listChannels() {
-    return loadChannels();
+  // ========== Channels ==========
+  async listChannels() {
+    const pool = getPool();
+    const [rows] = await pool.execute(`SELECT * FROM ${TABLES.channels} ORDER BY created_at ASC`);
+    return rows.map(row => ({
+      ...row,
+      config: typeof row.config === 'string' ? JSON.parse(row.config) : row.config,
+      isDefault: !!row.is_default
+    }));
   },
 
-  getChannel(id) {
-    const channels = loadChannels();
-    return channels.find(c => c.id === id);
-  },
-
-  getChannelByType(type) {
-    const channels = loadChannels();
-    return channels.find(c => c.type === type);
-  },
-
-  getDefaultChannel() {
-    const channels = loadChannels();
-    // 优先返回启用的默认渠道
-    const defaultChannel = channels.find(c => c.isDefault && c.enabled);
-    if (defaultChannel) return defaultChannel;
-    // 否则返回第一个启用的渠道
-    return channels.find(c => c.enabled);
-  },
-
-  createChannel(data) {
-    const channels = loadChannels();
-    const channel = {
-      id: uuidv4(),
-      name: data.name,
-      type: data.type,
-      config: data.config || {},
-      enabled: data.enabled ?? false,
-      isDefault: false,
-      created_at: new Date().toISOString()
+  async getChannel(id) {
+    const pool = getPool();
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.channels} WHERE id = ?`,
+      [id]
+    );
+    if (!rows[0]) return null;
+    return {
+      ...rows[0],
+      config: typeof rows[0].config === 'string' ? JSON.parse(rows[0].config) : rows[0].config,
+      isDefault: !!rows[0].is_default
     };
-    channels.push(channel);
-    saveChannels(channels);
-    return channel;
   },
 
-  updateChannel(id, data) {
-    const channels = loadChannels();
-    const idx = channels.findIndex(c => c.id === id);
-    if (idx === -1) return null;
-
-    // 如果设置为默认渠道，先取消其他渠道的默认状态
-    if (data.isDefault) {
-      for (let i = 0; i < channels.length; i++) {
-        if (channels[i].id !== id) {
-          channels[i].isDefault = false;
-        }
-      }
-    }
-
-    channels[idx] = { ...channels[idx], ...data };
-    saveChannels(channels);
-    return channels[idx];
+  async getChannelByType(type) {
+    const pool = getPool();
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.channels} WHERE type = ?`,
+      [type]
+    );
+    if (!rows[0]) return null;
+    return {
+      ...rows[0],
+      config: typeof rows[0].config === 'string' ? JSON.parse(rows[0].config) : rows[0].config,
+      isDefault: !!rows[0].is_default
+    };
   },
 
-  deleteChannel(id) {
-    const channels = loadChannels();
-    const idx = channels.findIndex(c => c.id === id);
-    if (idx === -1) return false;
-    channels.splice(idx, 1);
-    saveChannels(channels);
-    return true;
-  },
-
-  // Publish Records
-  listPublishRecords(skillId) {
-    const recordsFile = path.join(__dirname, '..', 'data', 'publish_records.json');
-    if (!fs.existsSync(recordsFile)) return [];
-
-    let records = JSON.parse(fs.readFileSync(recordsFile, 'utf-8'));
-    if (skillId) {
-      records = records.filter(r => r.skill_id === skillId);
-    }
-
-    // Attach channel info
-    const channels = loadChannels();
-    return records.map(r => {
-      const channel = channels.find(c => c.id === r.channel_id) || {};
+  async getDefaultChannel() {
+    const pool = getPool();
+    // First try to get enabled default channel
+    const [defaultRows] = await pool.execute(
+      `SELECT * FROM ${TABLES.channels} WHERE is_default = TRUE AND enabled = TRUE`
+    );
+    if (defaultRows[0]) {
       return {
-        ...r,
-        channel_name: channel.name || 'Unknown',
-        channel_type: channel.type || 'unknown'
+        ...defaultRows[0],
+        config: typeof defaultRows[0].config === 'string' ? JSON.parse(defaultRows[0].config) : defaultRows[0].config,
+        isDefault: true
       };
-    }).sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+    }
+    // Otherwise get first enabled channel
+    const [enabledRows] = await pool.execute(
+      `SELECT * FROM ${TABLES.channels} WHERE enabled = TRUE ORDER BY created_at ASC LIMIT 1`
+    );
+    if (!enabledRows[0]) return null;
+    return {
+      ...enabledRows[0],
+      config: typeof enabledRows[0].config === 'string' ? JSON.parse(enabledRows[0].config) : enabledRows[0].config,
+      isDefault: !!enabledRows[0].is_default
+    };
   },
 
-  createPublishRecord(skillId, channelId) {
-    const recordsFile = path.join(__dirname, '..', 'data', 'publish_records.json');
-    let records = [];
-    if (fs.existsSync(recordsFile)) {
-      records = JSON.parse(fs.readFileSync(recordsFile, 'utf-8'));
+  async createChannel(data) {
+    const pool = getPool();
+    const id = uuidv4();
+    const now = new Date();
+
+    await pool.execute(
+      `INSERT INTO ${TABLES.channels} (id, name, type, config, enabled, is_default, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        data.name,
+        data.type,
+        JSON.stringify(data.config || {}),
+        data.enabled ? 1 : 0,
+        0,
+        now
+      ]
+    );
+
+    return this.getChannel(id);
+  },
+
+  async updateChannel(id, data) {
+    const pool = getPool();
+    const channel = await this.getChannel(id);
+    if (!channel) return null;
+
+    const updates = [];
+    const params = [];
+
+    if (data.name !== undefined) {
+      updates.push('name = ?');
+      params.push(data.name);
+    }
+    if (data.type !== undefined) {
+      updates.push('type = ?');
+      params.push(data.type);
+    }
+    if (data.config !== undefined) {
+      updates.push('config = ?');
+      params.push(JSON.stringify(data.config));
+    }
+    if (data.enabled !== undefined) {
+      updates.push('enabled = ?');
+      params.push(data.enabled ? 1 : 0);
+    }
+    if (data.isDefault !== undefined) {
+      updates.push('is_default = ?');
+      params.push(data.isDefault ? 1 : 0);
     }
 
-    const record = {
-      id: uuidv4(),
-      skill_id: skillId,
-      channel_id: channelId,
-      status: 'published',
-      published_at: new Date().toISOString(),
-      unpublished_at: null
-    };
-    records.push(record);
-    fs.writeFileSync(recordsFile, JSON.stringify(records, null, 2), 'utf-8');
-    return record;
+    if (updates.length > 0) {
+      // If setting as default, unset other defaults first
+      if (data.isDefault) {
+        await pool.execute(`UPDATE ${TABLES.channels} SET is_default = FALSE`);
+      }
+
+      params.push(id);
+      await pool.execute(
+        `UPDATE ${TABLES.channels} SET ${updates.join(', ')} WHERE id = ?`,
+        params
+      );
+    }
+
+    return this.getChannel(id);
   },
 
-  unpublishRecords(skillId) {
-    const recordsFile = path.join(__dirname, '..', 'data', 'publish_records.json');
-    if (!fs.existsSync(recordsFile)) return [];
+  async deleteChannel(id) {
+    const pool = getPool();
+    const [result] = await pool.execute(
+      `DELETE FROM ${TABLES.channels} WHERE id = ?`,
+      [id]
+    );
+    return result.affectedRows > 0;
+  },
 
-    let records = JSON.parse(fs.readFileSync(recordsFile, 'utf-8'));
-    const updated = records.map(r => {
-      if (r.skill_id === skillId && r.status === 'published') {
-        return { ...r, status: 'unpublished', unpublished_at: new Date().toISOString() };
-      }
-      return r;
-    });
-    fs.writeFileSync(recordsFile, JSON.stringify(updated, null, 2), 'utf-8');
+  // ========== Publish Records ==========
+  async listPublishRecords(skillId) {
+    const pool = getPool();
+    let sql = `
+      SELECT pr.*, c.name as channel_name, c.type as channel_type
+      FROM ${TABLES.publish_records} pr
+      LEFT JOIN ${TABLES.channels} c ON pr.channel_id = c.id
+    `;
+    const params = [];
 
-    return records.filter(r => r.skill_id === skillId && r.status === 'unpublished');
+    if (skillId) {
+      sql += ' WHERE pr.skill_id = ?';
+      params.push(skillId);
+    }
+
+    sql += ' ORDER BY pr.published_at DESC';
+
+    const [rows] = await pool.execute(sql, params);
+    return rows;
+  },
+
+  async createPublishRecord(skillId, channelId) {
+    const pool = getPool();
+    const id = uuidv4();
+    const now = new Date();
+
+    await pool.execute(
+      `INSERT INTO ${TABLES.publish_records} (id, skill_id, channel_id, status, published_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, skillId, channelId, 'published', now]
+    );
+
+    const [rows] = await pool.execute(
+      `SELECT pr.*, c.name as channel_name, c.type as channel_type
+       FROM ${TABLES.publish_records} pr
+       LEFT JOIN ${TABLES.channels} c ON pr.channel_id = c.id
+       WHERE pr.id = ?`,
+      [id]
+    );
+    return rows[0];
+  },
+
+  async unpublishRecords(skillId) {
+    const pool = getPool();
+    const now = new Date();
+
+    // Get current published records
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.publish_records} WHERE skill_id = ? AND status = 'published'`,
+      [skillId]
+    );
+
+    // Update to unpublished
+    await pool.execute(
+      `UPDATE ${TABLES.publish_records} SET status = 'unpublished', unpublished_at = ? WHERE skill_id = ? AND status = 'published'`,
+      [now, skillId]
+    );
+
+    return rows.map(r => ({ ...r, status: 'unpublished', unpublished_at: now }));
   },
 
   // ========== Custom Directories ==========
-  // 获取自定义目录列表
-  listCustomDirs(skillId) {
-    return readCustomDirsConfig(skillId);
+  async listCustomDirs(skillId) {
+    const pool = getPool();
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.custom_dirs} WHERE skill_id = ? ORDER BY path ASC`,
+      [skillId]
+    );
+    // Convert snake_case to camelCase for frontend compatibility
+    return rows.map(row => ({
+      ...row,
+      parentPath: row.parent_path
+    }));
   },
 
-  // 创建自定义目录
-  createCustomDir(skillId, data) {
+  async createCustomDir(skillId, data) {
+    const pool = getPool();
     const { name, parentPath = '' } = data;
 
-    if (!isValidCustomDirName(name)) {
-      throw new Error('目录名无效，只能包含字母、数字、下划线、中划线，且不能与系统目录重名');
+    // Validate name
+    const RESERVED_DIRS = ['scripts', 'references', 'assets'];
+    if (!name || typeof name !== 'string') {
+      throw new Error('目录名无效');
+    }
+    if (RESERVED_DIRS.includes(name.toLowerCase())) {
+      throw new Error('目录名不能与系统目录重名');
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+      throw new Error('目录名只能包含字母、数字、下划线、中划线');
     }
 
-    // 检查目录层级，最多三级
+    // Check depth limit (max 3 levels)
     const currentLevel = parentPath ? parentPath.split('/').length : 0;
     if (currentLevel >= 3) {
       throw new Error('目录层级最多支持三级');
@@ -543,101 +685,138 @@ const db = {
 
     const dirPath = parentPath ? `${parentPath}/${name}` : name;
 
-    // 检查路径冲突
-    const conflict = checkDirPathConflict(skillId, dirPath);
-    if (conflict) {
-      throw new Error(`目录路径与已有目录「${conflict.name}」冲突`);
+    // Check for conflicts
+    const [existing] = await pool.execute(
+      `SELECT * FROM ${TABLES.custom_dirs} WHERE skill_id = ? AND (path = ? OR path LIKE ?)`,
+      [skillId, dirPath, `${dirPath}/%`]
+    );
+    if (existing.length > 0) {
+      throw new Error(`目录路径与已有目录「${existing[0].name}」冲突`);
     }
 
-    const dirs = readCustomDirsConfig(skillId);
-    const dir = {
-      id: uuidv4(),
-      name,
-      path: dirPath,
-      parentPath,
-      created_at: new Date().toISOString()
-    };
-    dirs.push(dir);
-    saveCustomDirsConfig(skillId, dirs);
+    const id = uuidv4();
+    const now = new Date();
 
-    // 创建物理目录
+    await pool.execute(
+      `INSERT INTO ${TABLES.custom_dirs} (id, skill_id, name, path, parent_path, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, skillId, name, dirPath, parentPath, now]
+    );
+
+    // Create physical directory
     const physicalDir = path.join(getSkillDir(skillId), dirPath);
     fs.mkdirSync(physicalDir, { recursive: true });
 
-    return dir;
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.custom_dirs} WHERE id = ?`,
+      [id]
+    );
+    return { ...rows[0], parentPath: rows[0].parent_path };
   },
 
-  // 删除自定义目录（包括子目录和文件）
-  deleteCustomDir(skillId, dirId) {
-    const dirs = readCustomDirsConfig(skillId);
-    const dir = dirs.find(d => d.id === dirId);
-    if (!dir) return false;
+  async deleteCustomDir(skillId, dirId) {
+    const pool = getPool();
 
-    // 删除物理目录
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.custom_dirs} WHERE id = ? AND skill_id = ?`,
+      [dirId, skillId]
+    );
+    if (rows.length === 0) return false;
+
+    const dir = rows[0];
+
+    // Delete physical directory
     const physicalDir = path.join(getSkillDir(skillId), dir.path);
     if (fs.existsSync(physicalDir)) {
       fs.rmSync(physicalDir, { recursive: true, force: true });
     }
 
-    // 删除配置中的目录及其子目录
-    const filtered = dirs.filter(d => {
-      // 不是自己，也不是子目录
-      return d.id !== dirId && !d.path.startsWith(dir.path + '/');
-    });
-    saveCustomDirsConfig(skillId, filtered);
+    // Delete file records from skill_files table
+    await pool.execute(
+      `DELETE FROM ${TABLES.skill_files} WHERE skill_id = ? AND (path = ? OR path LIKE ?)`,
+      [skillId, dir.path, `${dir.path}/%`]
+    );
+
+    // Delete from database (including child directories)
+    await pool.execute(
+      `DELETE FROM ${TABLES.custom_dirs} WHERE skill_id = ? AND (id = ? OR path LIKE ?)`,
+      [skillId, dirId, `${dir.path}/%`]
+    );
 
     return true;
   },
 
-  // 重命名自定义目录
-  renameCustomDir(skillId, dirId, newName) {
-    if (!isValidCustomDirName(newName)) {
-      throw new Error('目录名无效，只能包含字母、数字、下划线、中划线，且不能与系统目录重名');
+  async renameCustomDir(skillId, dirId, newName) {
+    const pool = getPool();
+
+    // Validate name
+    const RESERVED_DIRS = ['scripts', 'references', 'assets'];
+    if (!newName || typeof newName !== 'string') {
+      throw new Error('目录名无效');
+    }
+    if (RESERVED_DIRS.includes(newName.toLowerCase())) {
+      throw new Error('目录名不能与系统目录重名');
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(newName)) {
+      throw new Error('目录名只能包含字母、数字、下划线、中划线');
     }
 
-    const dirs = readCustomDirsConfig(skillId);
-    const dir = dirs.find(d => d.id === dirId);
-    if (!dir) return null;
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.custom_dirs} WHERE id = ? AND skill_id = ?`,
+      [dirId, skillId]
+    );
+    if (rows.length === 0) return null;
 
+    const dir = rows[0];
     const oldPath = dir.path;
-    const newPath = dir.parentPath ? `${dir.parentPath}/${newName}` : newName;
+    const newPath = dir.parent_path ? `${dir.parent_path}/${newName}` : newName;
 
-    // 检查新路径是否冲突
-    const conflict = checkDirPathConflict(skillId, newPath, dirId);
-    if (conflict) {
-      throw new Error(`目录路径与已有目录「${conflict.name}」冲突`);
+    // Check for conflicts
+    const [existing] = await pool.execute(
+      `SELECT * FROM ${TABLES.custom_dirs} WHERE skill_id = ? AND id != ? AND (path = ? OR path LIKE ?)`,
+      [skillId, dirId, newPath, `${newPath}/%`]
+    );
+    if (existing.length > 0) {
+      throw new Error(`目录路径与已有目录「${existing[0].name}」冲突`);
     }
 
-    // 重命名物理目录
+    // Rename physical directory
     const oldPhysicalDir = path.join(getSkillDir(skillId), oldPath);
     const newPhysicalDir = path.join(getSkillDir(skillId), newPath);
     if (fs.existsSync(oldPhysicalDir)) {
-      // 先创建父目录
       fs.mkdirSync(path.dirname(newPhysicalDir), { recursive: true });
       fs.renameSync(oldPhysicalDir, newPhysicalDir);
     }
 
-    // 更新配置
-    const updated = dirs.map(d => {
-      if (d.id === dirId) {
-        return { ...d, name: newName, path: newPath };
-      }
-      // 更新子目录路径
-      if (d.path.startsWith(oldPath + '/')) {
-        return {
-          ...d,
-          path: d.path.replace(oldPath + '/', newPath + '/'),
-          parentPath: d.parentPath.replace(oldPath, newPath)
-        };
-      }
-      return d;
-    });
-    saveCustomDirsConfig(skillId, updated);
+    // Update database
+    await pool.execute(
+      `UPDATE ${TABLES.custom_dirs} SET name = ?, path = ? WHERE id = ?`,
+      [newName, newPath, dirId]
+    );
 
-    return updated.find(d => d.id === dirId);
+    // Update child directories
+    const [children] = await pool.execute(
+      `SELECT * FROM ${TABLES.custom_dirs} WHERE skill_id = ? AND path LIKE ?`,
+      [skillId, `${oldPath}/%`]
+    );
+
+    for (const child of children) {
+      const newChildPath = child.path.replace(oldPath + '/', newPath + '/');
+      const newParentPath = child.parent_path.replace(oldPath, newPath);
+      await pool.execute(
+        `UPDATE ${TABLES.custom_dirs} SET path = ?, parent_path = ? WHERE id = ?`,
+        [newChildPath, newParentPath, child.id]
+      );
+    }
+
+    const [updated] = await pool.execute(
+      `SELECT * FROM ${TABLES.custom_dirs} WHERE id = ?`,
+      [dirId]
+    );
+    return { ...updated[0], parentPath: updated[0].parent_path };
   },
 
-  // 列出自定义目录中的文件（支持递归列出子目录）
+  // ========== Custom Directory Files ==========
   listCustomDirFiles(skillId, dirPath) {
     const dir = path.join(getSkillDir(skillId), dirPath);
     if (!fs.existsSync(dir)) return [];
@@ -648,11 +827,9 @@ const db = {
     for (const item of items) {
       const itemPath = path.join(dir, item);
       const stat = fs.statSync(itemPath);
-      // 使用正斜杠作为路径分隔符，保持跨平台一致性
       const relativePath = dirPath ? `${dirPath}/${item}` : item;
 
       if (stat.isDirectory()) {
-        // 递归列出子目录
         const subFiles = this.listCustomDirFiles(skillId, relativePath);
         result.push(...subFiles);
       } else {
@@ -669,35 +846,26 @@ const db = {
     return result;
   },
 
-  // 可编辑的文本文件扩展名
   EDITABLE_EXTENSIONS: [
-    // 文档类
     'txt', 'md', 'markdown', 'rst', 'adoc',
-    // 代码/脚本
     'py', 'js', 'ts', 'jsx', 'tsx', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
     'rb', 'pl', 'lua', 'php', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs',
     'swift', 'kt', 'scala', 'r', 'sql', 'vue', 'svelte',
-    // 配置/数据
     'json', 'yaml', 'yml', 'xml', 'toml', 'ini', 'env', 'cfg', 'conf',
     'properties', 'gitignore', 'dockerignore', 'editorconfig',
-    // 样式/标记
     'html', 'htm', 'css', 'scss', 'sass', 'less', 'styl',
-    // 其他文本
     'log', 'csv', 'tsv'
   ],
 
-  // 检查文件是否可编辑
   isEditableFile(filename) {
     const ext = filename.split('.').pop().toLowerCase();
     return this.EDITABLE_EXTENSIONS.includes(ext);
   },
 
-  // 获取自定义目录中的文件
   getCustomDirFile(skillId, filePath) {
     const fullPath = path.join(getSkillDir(skillId), filePath);
     if (!fs.existsSync(fullPath)) return null;
 
-    // 安全检查：确保路径在 skill 目录内
     const skillDir = getSkillDir(skillId);
     const resolved = path.resolve(fullPath);
     if (!resolved.startsWith(skillDir)) {
@@ -718,7 +886,6 @@ const db = {
       updated_at: stat.mtime.toISOString()
     };
 
-    // 只有可编辑文件才返回内容
     if (isEditable) {
       result.content = fs.readFileSync(fullPath, 'utf-8');
     }
@@ -726,33 +893,33 @@ const db = {
     return result;
   },
 
-  // 保存文件到自定义目录
-  saveCustomDirFile(skillId, filePath, content) {
+  async saveCustomDirFile(skillId, filePath, content) {
     const fullPath = path.join(getSkillDir(skillId), filePath);
 
-    // 安全检查：确保路径在 skill 目录内
     const skillDir = getSkillDir(skillId);
     const resolved = path.resolve(fullPath);
     if (!resolved.startsWith(skillDir)) {
       throw new Error('非法路径');
     }
 
-    // 创建父目录
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, content || '', 'utf-8');
 
+    // Update skill_files table
+    const filename = path.basename(filePath);
+    const isEditable = this.isEditableFile(filename);
+    await upsertFileRecord(skillId, 'custom', filename, filePath, (content || '').length, isEditable);
+
     return {
-      name: path.basename(filePath),
+      name: filename,
       path: filePath,
       size: (content || '').length
     };
   },
 
-  // 删除自定义目录中的文件
-  deleteCustomDirFile(skillId, filePath) {
+  async deleteCustomDirFile(skillId, filePath) {
     const fullPath = path.join(getSkillDir(skillId), filePath);
 
-    // 安全检查
     const skillDir = getSkillDir(skillId);
     const resolved = path.resolve(fullPath);
     if (!resolved.startsWith(skillDir)) {
@@ -761,35 +928,135 @@ const db = {
 
     if (fs.existsSync(fullPath)) {
       fs.unlinkSync(fullPath);
+
+      // Update skill_files table
+      await deleteFileRecord(skillId, filePath);
+
       return true;
     }
     return false;
   },
 
-  // 上传文件到自定义目录
-  uploadCustomDirFile(skillId, dirPath, filename, buffer) {
+  async uploadCustomDirFile(skillId, dirPath, filename, buffer) {
     const safeFilename = path.basename(filename);
     const fullPath = path.join(getSkillDir(skillId), dirPath, safeFilename);
 
-    // 安全检查
     const skillDir = getSkillDir(skillId);
     const resolved = path.resolve(fullPath);
     if (!resolved.startsWith(skillDir)) {
       throw new Error('非法路径');
     }
 
-    // 确保目录存在
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, buffer);
 
+    // Update skill_files table
+    const relativePath = dirPath ? `${dirPath}/${safeFilename}` : safeFilename;
+    const isEditable = this.isEditableFile(safeFilename);
+    await upsertFileRecord(skillId, 'custom', safeFilename, relativePath, buffer.length, isEditable);
+
     return {
       name: safeFilename,
-      path: dirPath ? `${dirPath}/${safeFilename}` : safeFilename,
+      path: relativePath,
       size: buffer.length
     };
   },
 
-  // 暴露 parseFrontmatter 供其他模块使用
+  // ========== Skill Files Query ==========
+  async listSkillFiles(skillId, type = null) {
+    const pool = getPool();
+    let sql = `SELECT * FROM ${TABLES.skill_files} WHERE skill_id = ?`;
+    const params = [skillId];
+
+    if (type) {
+      sql += ' AND type = ?';
+      params.push(type);
+    }
+
+    sql += ' ORDER BY path ASC';
+    const [rows] = await pool.execute(sql, params);
+    return rows;
+  },
+
+  async syncSkillFiles(skillId) {
+    const pool = getPool();
+    const skillDir = getSkillDir(skillId);
+    const stats = { added: 0, updated: 0, removed: 0 };
+
+    // Get existing files from database
+    const [existingFiles] = await pool.execute(
+      `SELECT path FROM ${TABLES.skill_files} WHERE skill_id = ?`,
+      [skillId]
+    );
+    const existingPaths = new Set(existingFiles.map(f => f.path));
+
+    // Scan file system
+    const foundPaths = new Set();
+    const subdirs = ['scripts', 'references', 'assets'];
+
+    const scanDir = (dirPath, type) => {
+      if (!fs.existsSync(dirPath)) return;
+
+      const items = fs.readdirSync(dirPath);
+      for (const item of items) {
+        const itemPath = path.join(dirPath, item);
+        const stat = fs.statSync(itemPath);
+
+        if (stat.isDirectory()) {
+          scanDir(itemPath, type);
+        } else {
+          const relativePath = path.relative(skillDir, itemPath).replace(/\\/g, '/');
+          const isEditable = type !== 'asset' && this.isEditableFile(item);
+
+          upsertFileRecord(skillId, type, item, relativePath, stat.size, isEditable);
+          foundPaths.add(relativePath);
+
+          if (!existingPaths.has(relativePath)) {
+            stats.added++;
+          } else {
+            stats.updated++;
+          }
+        }
+      }
+    };
+
+    // Scan standard directories
+    for (const subdir of subdirs) {
+      const type = getFileType(subdir);
+      scanDir(path.join(skillDir, subdir), type);
+    }
+
+    // Scan custom directories
+    const customDirs = await this.listCustomDirs(skillId);
+    for (const dir of customDirs) {
+      const files = this.listCustomDirFiles(skillId, dir.path);
+      for (const file of files) {
+        foundPaths.add(file.path);
+        await upsertFileRecord(skillId, 'custom', file.name, file.path, file.size, file.isEditable);
+
+        if (!existingPaths.has(file.path)) {
+          stats.added++;
+        } else {
+          stats.updated++;
+        }
+      }
+    }
+
+    // Remove files that no longer exist
+    for (const existingPath of existingPaths) {
+      if (!foundPaths.has(existingPath)) {
+        await pool.execute(
+          `DELETE FROM ${TABLES.skill_files} WHERE skill_id = ? AND path = ?`,
+          [skillId, existingPath]
+        );
+        stats.removed++;
+      }
+    }
+
+    return stats;
+  },
+
+  // Expose parseFrontmatter for external use
   parseFrontmatter
 };
 

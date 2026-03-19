@@ -10,6 +10,7 @@ console.log(`日志文件: ${LOG_FILE}`);
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
+const db = require('./db');
 
 // 确保 data 和 skills 目录存在
 const dataDir = path.join(__dirname, '..', 'data');
@@ -32,6 +33,32 @@ app.use('/api/skills', require('./routes/publish'));
 app.use('/api/channels', require('./routes/channels'));
 app.use('/api/ai', require('./routes/ai'));
 
+// 错误处理中间件
+app.use((err, req, res, next) => {
+  // Multer 文件大小超限错误
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    const maxFileSize = parseInt(process.env.MAX_FILE_SIZE || '2', 10);
+    const maxZipSize = parseInt(process.env.MAX_ZIP_SIZE || '10', 10);
+
+    // 根据路径判断是单个文件还是zip
+    const isZip = req.path.includes('import-zip') || req.path.includes('upload');
+    const limit = isZip ? maxZipSize : maxFileSize;
+
+    return res.status(400).json({
+      error: `文件大小超过限制，最大允许 ${limit}MB`
+    });
+  }
+
+  // Multer 其他错误
+  if (err.code && err.code.startsWith('LIMIT_')) {
+    return res.status(400).json({ error: err.message || '文件上传错误' });
+  }
+
+  // 其他错误
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: err.message || '服务器内部错误' });
+});
+
 // 生产环境下服务前端静态文件
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
 if (fs.existsSync(clientDist)) {
@@ -41,6 +68,33 @@ if (fs.existsSync(clientDist)) {
   });
 }
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`SkillHub server running at http://localhost:${PORT}`);
+  console.log(`Database: ${process.env.MYSQL_DATABASE || 'skillhub'} @ ${process.env.MYSQL_HOST || 'localhost'}`);
 });
+
+// 优雅关闭
+async function gracefulShutdown(signal) {
+  console.log(`\n${signal} received, shutting down gracefully...`);
+
+  try {
+    await db.closePool();
+    console.log('Database connection pool closed.');
+  } catch (err) {
+    console.error('Error closing database pool:', err.message);
+  }
+
+  server.close(() => {
+    console.log('HTTP server closed.');
+    process.exit(0);
+  });
+
+  // 强制退出超时
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 5000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

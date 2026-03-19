@@ -10,7 +10,7 @@ excalidraw.log
 .qoder/*
 .trae/*
 server/.env.development
-server/.env.production
 published_skills/*
 logs/*
-data/*
+server/db/migrate.js
+server/db/syncFiles.js

@@ -301,24 +301,78 @@ export default function AiGenerator({ onComplete, onCancel }) {
                 </button>
               </div>
               {isExpanded && (
-                <div style={{ padding: '12px', borderTop: '1px solid #e8e8e8', background: '#fff' }}>
-                  <div style={{ marginBottom: 8 }}>
-                    <label style={{ fontSize: 12, color: '#666', marginBottom: 4, display: 'block' }}>文件名</label>
+                <div style={{
+                  padding: '16px',
+                  borderTop: '1px solid #e8e8e8',
+                  background: '#fff'
+                }}>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{
+                      fontSize: 12,
+                      color: '#333',
+                      fontWeight: 500,
+                      marginBottom: 6,
+                      display: 'block'
+                    }}>文件名</label>
                     <input
                       value={file.filename}
                       onChange={e => updateAuxiliaryFile(type, index, 'filename', e.target.value)}
-                      placeholder="文件名"
-                      style={{ fontSize: 13 }
-                    }
+                      placeholder="输入文件名，如 helper.py"
+                      style={{
+                        width: '100%',
+                        fontSize: 13,
+                        padding: '8px 12px',
+                        border: '1px solid #d9d9d9',
+                        borderRadius: 4,
+                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                        outline: 'none'
+                      }}
+                      onFocus={e => {
+                        e.target.style.borderColor = '#1890ff';
+                        e.target.style.boxShadow = '0 0 0 2px rgba(24, 144, 255, 0.1)';
+                      }}
+                      onBlur={e => {
+                        e.target.style.borderColor = '#d9d9d9';
+                        e.target.style.boxShadow = 'none';
+                      }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: '#666', marginBottom: 4, display: 'block' }}>内容</label>
+                    <label style={{
+                      fontSize: 12,
+                      color: '#333',
+                      fontWeight: 500,
+                      marginBottom: 6,
+                      display: 'block'
+                    }}>内容</label>
                     <textarea
                       value={file.content}
                       onChange={e => updateAuxiliaryFile(type, index, 'content', e.target.value)}
-                      placeholder="文件内容"
-                      style={{ fontSize: 12, fontFamily: 'monospace', minHeight: 200, background: '#fafafa' }}
+                      placeholder="输入文件内容..."
+                      style={{
+                        width: '100%',
+                        minHeight: 200,
+                        fontSize: 13,
+                        fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                        padding: '12px',
+                        border: '1px solid #d9d9d9',
+                        borderRadius: 4,
+                        background: '#fafafa',
+                        lineHeight: 1.6,
+                        resize: 'vertical',
+                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                        outline: 'none'
+                      }}
+                      onFocus={e => {
+                        e.target.style.borderColor = '#1890ff';
+                        e.target.style.boxShadow = '0 0 0 2px rgba(24, 144, 255, 0.1)';
+                        e.target.style.background = '#fff';
+                      }}
+                      onBlur={e => {
+                        e.target.style.borderColor = '#d9d9d9';
+                        e.target.style.boxShadow = 'none';
+                        e.target.style.background = '#fafafa';
+                      }}
                     />
                   </div>
                 </div>

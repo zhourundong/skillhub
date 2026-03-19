@@ -83,7 +83,7 @@ export default function AssetManager({ skillId, readonly }) {
               style={{ display: 'none' }}
             />
           </label>
-          <span style={{ color: '#888', fontSize: 12 }}>最大 10MB</span>
+          <span style={{ color: '#888', fontSize: 12 }}>最大 2MB</span>
         </div>
       )}
 

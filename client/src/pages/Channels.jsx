@@ -156,7 +156,7 @@ export default function Channels() {
         repo: ch.config.repo || '',
         branch: ch.config.branch || 'main',
         token: ch.config.token || '',
-        basePath: ch.config.basePath || 'skills',
+        basePath: ch.config.basePath ?? '',  // 保留空值，不使用默认值
         repoUrl: ch.config.repoUrl || ''
       });
     }

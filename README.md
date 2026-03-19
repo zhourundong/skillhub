@@ -25,10 +25,11 @@ skillhub/
 │   │   ├── local.js       # 本地发布
 │   │   ├── remote.js      # 远程服务器发布
 │   │   └── github.js      # GitHub 发布
+│   ├── db/                # 数据库相关
+│   │   └── init.sql       # MySQL 表结构初始化
 │   ├── skill-creator/     # AI 生成提示词
 │   └── .env               # 环境变量配置
-├── skills/                 # Skill 存储目录
-├── data/                   # 数据目录
+├── skills/                 # Skill 文件缓存目录
 └── published_skills/       # 本地发布输出目录
 ```
 
@@ -66,6 +67,7 @@ Markdown 格式的 Skill 说明...
 ### 环境要求
 
 - Node.js 18+
+- MySQL 5.7+
 - npm 或 yarn
 
 ### 安装依赖
@@ -75,11 +77,31 @@ npm install
 cd client && npm install
 ```
 
+### 数据库初始化
+
+1. 创建 MySQL 数据库
+2. 执行 `server/db/init.sql` 初始化表结构
+
+```bash
+mysql -u root -p < server/db/init.sql
+```
+
 ### 配置环境变量
 
 在 `server/.env` 文件中配置：
 
 ```env
+# MySQL 配置
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_password
+MYSQL_DATABASE=skill_hub
+
+# 文件上传限制（单位：MB）
+MAX_FILE_SIZE=2      # 单个文件最大 2MB
+MAX_ZIP_SIZE=10      # ZIP 包最大 10MB
+
 # AI 服务配置（用于自动生成 Skill）
 AI_API_KEY=your-api-key
 AI_API_BASE_URL=https://api.openai.com/v1
@@ -167,15 +189,16 @@ ZIP 包名为 `{技能名}@{版本号}.zip`。
 3. 自动识别并注册自定义目录（非 scripts/references/assets 的目录）
 4. 自动排除 `metadata.json` 和 `custom_dirs.json`
 
-**ZIP 文件限制**:
-- 文件大小不超过 10MB
-- 文件扩展名必须为 `.zip`
+**文件大小限制**:
+- 单个文件最大 2MB（可通过 `MAX_FILE_SIZE` 环境变量配置）
+- ZIP 包最大 10MB（可通过 `MAX_ZIP_SIZE` 环境变量配置）
+- ZIP 文件扩展名必须为 `.zip`
 
 ## 自定义目录
 
 - 支持创建最多三级子目录
 - 目录名只能包含字母、数字、下划线、中划线
-- 支持上传任意类型文件
+- 支持上传任意类型文件（单文件最大 2MB）
 - 文本文件（.txt, .md, .json, .py, .js 等）支持在线编辑
 - 二进制文件（图片、PDF 等）仅支持下载
 
@@ -205,7 +228,7 @@ ZIP 包名为 `{技能名}@{版本号}.zip`。
 | PUT | `/api/skills/:id/references/:filename` | 保存参考资料 |
 | DELETE | `/api/skills/:id/references/:filename` | 删除参考资料 |
 | GET | `/api/skills/:id/assets` | 获取附件列表 |
-| POST | `/api/skills/:id/assets` | 上传附件 |
+| POST | `/api/skills/:id/assets` | 上传附件（最大 2MB） |
 | DELETE | `/api/skills/:id/assets/:filename` | 删除附件 |
 
 ### 自定义目录
@@ -258,8 +281,19 @@ ZIP 包名为 `{技能名}@{版本号}.zip`。
 
 - **前端**: React, React Router, Vite, Axios
 - **后端**: Node.js, Express, Multer, node-fetch
-- **存储**: 本地文件系统
+- **数据库**: MySQL
+- **存储**: MySQL（元数据） + 本地文件系统（二进制文件）
 - **AI**: OpenAI 兼容 API
+
+## 数据库表结构
+
+| 表名 | 说明 |
+|------|------|
+| t_sh_skills | 技能元数据（名称、描述、版本、状态等） |
+| t_sh_channels | 发布渠道配置 |
+| t_sh_publish_records | 发布记录 |
+| t_sh_custom_dirs | 自定义目录配置 |
+| t_sh_skill_files | 文件追踪表 |
 
 ## License
 
