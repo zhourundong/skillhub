@@ -12,6 +12,5 @@ excalidraw.log
 server/.env.development
 server/.env.production
 published_skills/*
-/logs/*
-/data/*
-/logs/
+logs/*
+data/*
