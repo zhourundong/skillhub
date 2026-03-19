@@ -4,8 +4,81 @@ import ConfirmDialog from '../components/ConfirmDialog';
 
 const DEFAULT_CONFIGS = {
   local: '{\n  "outputDir": "./published_skills"\n}',
-  remote: '{\n  "url": "https://example.com/api/skills/publish",\n  "unpublishUrl": "https://example.com/api/skills/unpublish",\n  "healthCheckUrl": "https://example.com/api/health",\n  "headers": {},\n  "timeout": 60000\n}'
+  remote: '{\n  "url": "https://example.com/api/skills/publish",\n  "unpublishUrl": "https://example.com/api/skills/unpublish",\n  "healthCheckUrl": "https://example.com/api/health",\n  "headers": {},\n  "timeout": 60000\n}',
+  github: '{\n  "owner": "",\n  "repo": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}'
 };
+
+// GitHub 配置表单组件
+function GitHubConfigForm({ config, onChange }) {
+  const handleChange = (field, value) => {
+    const newConfig = { ...config, [field]: value };
+    onChange(newConfig);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label>GitHub 仓库地址</label>
+        <input
+          placeholder="如: https://github.com/owner/repo 或 owner/repo"
+          value={config.repoUrl || ''}
+          onChange={e => handleChange('repoUrl', e.target.value)}
+        />
+        <p style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+          输入完整 URL 或 owner/repo 格式
+        </p>
+      </div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+          <label>Owner</label>
+          <input
+            placeholder="用户名或组织名"
+            value={config.owner || ''}
+            onChange={e => handleChange('owner', e.target.value)}
+          />
+        </div>
+        <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+          <label>Repository</label>
+          <input
+            placeholder="仓库名称"
+            value={config.repo || ''}
+            onChange={e => handleChange('repo', e.target.value)}
+          />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+          <label>分支</label>
+          <input
+            placeholder="main"
+            value={config.branch || 'main'}
+            onChange={e => handleChange('branch', e.target.value)}
+          />
+        </div>
+        <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+          <label>目标路径</label>
+          <input
+            placeholder="skills"
+            value={config.basePath || ''}
+            onChange={e => handleChange('basePath', e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label>GitHub Token</label>
+        <input
+          type="password"
+          placeholder="ghp_xxxx (需要 repo 权限)"
+          value={config.token || ''}
+          onChange={e => handleChange('token', e.target.value)}
+        />
+        <p style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+          需要 Personal Access Token，权限需包含 repo
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function Channels() {
   const [channels, setChannels] = useState([]);
@@ -14,6 +87,7 @@ export default function Channels() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: '', type: 'local', config: DEFAULT_CONFIGS.local });
+  const [gitHubConfig, setGitHubConfig] = useState({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
   const [confirm, setConfirm] = useState(null);
 
   const showError = (message) => {
@@ -27,7 +101,8 @@ export default function Channels() {
   const showSuccess = (message) => {
     setConfirm({
       message,
-      onConfirm: () => setConfirm(null)
+      onConfirm: () => setConfirm(null),
+      type: 'success'
     });
   };
 
@@ -52,9 +127,16 @@ export default function Channels() {
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
-      await channelsApi.create({ ...form, config: JSON.parse(form.config) });
+      let config;
+      if (form.type === 'github') {
+        config = gitHubConfig;
+      } else {
+        config = JSON.parse(form.config);
+      }
+      await channelsApi.create({ name: form.name, type: form.type, config });
       setShowForm(false);
       setForm({ name: '', type: 'local', config: DEFAULT_CONFIGS.local });
+      setGitHubConfig({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
       load();
     } catch (err) {
       showError('创建失败: ' + (err.response?.data?.error || err.message));
@@ -68,17 +150,34 @@ export default function Channels() {
       type: ch.type,
       config: JSON.stringify(ch.config, null, 2)
     });
+    if (ch.type === 'github') {
+      setGitHubConfig({
+        owner: ch.config.owner || '',
+        repo: ch.config.repo || '',
+        branch: ch.config.branch || 'main',
+        token: ch.config.token || '',
+        basePath: ch.config.basePath || 'skills',
+        repoUrl: ch.config.repoUrl || ''
+      });
+    }
   };
 
   const handleUpdate = async (e) => {
     e.preventDefault();
     try {
+      let config;
+      if (form.type === 'github') {
+        config = gitHubConfig;
+      } else {
+        config = JSON.parse(form.config);
+      }
       await channelsApi.update(editingId, {
         name: form.name,
-        config: JSON.parse(form.config)
+        config
       });
       setEditingId(null);
       setForm({ name: '', type: 'local', config: DEFAULT_CONFIGS.local });
+      setGitHubConfig({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
       load();
     } catch (err) {
       showError('更新失败: ' + (err.response?.data?.error || err.message));
@@ -88,7 +187,17 @@ export default function Channels() {
   const handleTest = async (id) => {
     try {
       const res = await channelsApi.test(id);
-      showSuccess('连接正常: ' + JSON.stringify(res.data));
+      const ch = channels.find(c => c.id === id);
+      const data = res.data || {};
+
+      // 根据渠道类型显示不同的成功信息
+      if (ch?.type === 'github') {
+        showSuccess(`连接成功！仓库: ${data.repo || ch.config.owner + '/' + ch.config.repo}，分支: ${data.branch || ch.config.branch}`);
+      } else if (ch?.type === 'local') {
+        showSuccess(`连接成功！输出目录: ${data.outputDir || ch.config.outputDir}`);
+      } else {
+        showSuccess('连接正常');
+      }
     } catch (err) {
       showError('连接失败: ' + (err.response?.data?.error || err.message));
     }
@@ -96,7 +205,7 @@ export default function Channels() {
 
   const handleToggle = async (ch) => {
     try {
-      await channelsApi.update(ch.id, { enabled: ch.enabled ? 0 : 1 });
+      await channelsApi.update(ch.id, { enabled: !ch.enabled });
       load();
     } catch (err) {
       showError('操作失败: ' + (err.response?.data?.error || err.message));
@@ -134,11 +243,33 @@ export default function Channels() {
       type,
       config: DEFAULT_CONFIGS[type] || '{}'
     });
+    if (type === 'github') {
+      setGitHubConfig({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
+    }
   };
 
   const handleFormClose = () => {
     setShowForm(false);
     setForm({ name: '', type: 'local', config: DEFAULT_CONFIGS.local });
+    setGitHubConfig({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
+  };
+
+  const handleEditClose = () => {
+    setEditingId(null);
+    setForm({ name: '', type: 'local', config: DEFAULT_CONFIGS.local });
+    setGitHubConfig({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
+  };
+
+  // 过滤敏感配置字段用于显示
+  const getDisplayConfig = (config, type) => {
+    const sensitiveFields = ['token', 'password', 'secret', 'apiKey', 'api_key'];
+    const display = { ...config };
+    for (const field of sensitiveFields) {
+      if (display[field]) {
+        display[field] = '******';
+      }
+    }
+    return display;
   };
 
   return (
@@ -176,7 +307,7 @@ export default function Channels() {
                 类型: {ch.type} · 状态: {ch.enabled ? '启用' : '禁用'}
               </p>
               <p style={{ fontSize: 12, color: '#999', marginTop: 2 }}>
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{JSON.stringify(ch.config, null, 2)}</pre>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{JSON.stringify(getDisplayConfig(ch.config, ch.type), null, 2)}</pre>
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -184,7 +315,7 @@ export default function Channels() {
               <button className="btn btn-default" onClick={() => handleToggle(ch)}>
                 {ch.enabled ? '禁用' : '启用'}
               </button>
-              {ch.enabled && !ch.isDefault && (
+              {!!ch.enabled && !ch.isDefault && (
                 <button className="btn btn-default" onClick={() => handleSetDefault(ch)}>设为默认</button>
               )}
               {!ch.enabled && (
@@ -200,7 +331,7 @@ export default function Channels() {
 
       {showForm && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={form.type === 'github' ? { maxWidth: 600 } : {}}>
             <h2>添加发布渠道</h2>
             <form onSubmit={handleCreate}>
               <div className="form-group">
@@ -213,10 +344,14 @@ export default function Channels() {
                   {types.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <div className="form-group">
-                <label>配置 (JSON)</label>
-                <textarea value={form.config} onChange={e => setForm({ ...form, config: e.target.value })} rows={6} style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 13 }} />
-              </div>
+              {form.type === 'github' ? (
+                <GitHubConfigForm config={gitHubConfig} onChange={setGitHubConfig} />
+              ) : (
+                <div className="form-group">
+                  <label>配置 (JSON)</label>
+                  <textarea value={form.config} onChange={e => setForm({ ...form, config: e.target.value })} rows={6} style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 13 }} />
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button type="button" className="btn btn-default" onClick={handleFormClose}>取消</button>
                 <button type="submit" className="btn btn-primary">创建</button>
@@ -228,7 +363,7 @@ export default function Channels() {
 
       {editingId && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={form.type === 'github' ? { maxWidth: 600 } : {}}>
             <h2>编辑发布渠道</h2>
             <form onSubmit={handleUpdate}>
               <div className="form-group">
@@ -239,12 +374,16 @@ export default function Channels() {
                 <label>渠道类型</label>
                 <input value={form.type} disabled style={{ background: '#f5f5f5' }} />
               </div>
-              <div className="form-group">
-                <label>配置 (JSON)</label>
-                <textarea value={form.config} onChange={e => setForm({ ...form, config: e.target.value })} rows={6} style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 13 }} />
-              </div>
+              {form.type === 'github' ? (
+                <GitHubConfigForm config={gitHubConfig} onChange={setGitHubConfig} />
+              ) : (
+                <div className="form-group">
+                  <label>配置 (JSON)</label>
+                  <textarea value={form.config} onChange={e => setForm({ ...form, config: e.target.value })} rows={6} style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 13 }} />
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button type="button" className="btn btn-default" onClick={() => setEditingId(null)}>取消</button>
+                <button type="button" className="btn btn-default" onClick={handleEditClose}>取消</button>
                 <button type="submit" className="btn btn-primary">保存</button>
               </div>
             </form>

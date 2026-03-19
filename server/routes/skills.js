@@ -72,6 +72,11 @@ router.post('/import-zip', upload.single('file'), (req, res) => {
       return res.status(400).json({ error: 'SKILL.md 的 YAML 头必须包含 name 和 description 字段' });
     }
 
+    // 验证名称格式
+    if (!/^[a-zA-Z0-9-]+$/.test(frontmatter.name)) {
+      return res.status(400).json({ error: '技能名称只能包含字母、数字和连字符(-)' });
+    }
+
     // 检查名称是否重复
     const existing = db.findSkillByName(frontmatter.name);
     if (existing) {
@@ -217,6 +222,11 @@ router.post('/', (req, res) => {
 
   if (!name) return res.status(400).json({ error: '名称不能为空' });
 
+  // 验证名称格式：只允许字母、数字、连字符
+  if (!/^[a-zA-Z0-9-]+$/.test(name)) {
+    return res.status(400).json({ error: '技能名称只能包含字母、数字和连字符(-)' });
+  }
+
   // 检查名称是否重复
   const existing = db.findSkillByName(name);
   if (existing) {
@@ -277,8 +287,15 @@ router.put('/:id', (req, res) => {
 
   const { name, description, version, category, skill_content } = req.body;
 
-  // 检查名称是否重复（排除自身）
-  if (name && name !== skill.name) {
+  // 验证名称格式
+  if (name !== undefined && name !== skill.name) {
+    if (!name) {
+      return res.status(400).json({ error: '名称不能为空' });
+    }
+    if (!/^[a-zA-Z0-9-]+$/.test(name)) {
+      return res.status(400).json({ error: '技能名称只能包含字母、数字和连字符(-)' });
+    }
+    // 检查名称是否重复（排除自身）
     const existing = db.findSkillByName(name, req.params.id);
     if (existing) {
       return res.status(400).json({ error: `技能名称「${name}」已存在` });
@@ -315,9 +332,10 @@ router.get('/:id/download', (req, res) => {
     return res.status(404).json({ error: 'Skill 目录不存在' });
   }
 
-  // 清理文件名中的特殊字符
-  const safeName = (skill.name || req.params.id).replace(/[<>:"/\\|?*\s]/g, '-');
-  const zipName = `${safeName}.zip`;
+  // 生成 zip 名称：name@version.zip
+  const safeName = (skill.name || 'unnamed').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-');
+  const version = skill.version || '1.0.0';
+  const zipName = `${safeName}@${version}.zip`;
 
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`);

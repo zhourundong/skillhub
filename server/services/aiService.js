@@ -368,7 +368,8 @@ ${forbiddenSection}
 注意：
 1. skill_content 只需要写 Markdown 正文，不需要包含 name、description 等 frontmatter
 2. 辅助文件通过 \`generate_file\` 工具生成，不要包含在最终 JSON 中
-3. JSON 字符串中的引号需要转义为 \\\"`;
+3. JSON 字符串中的引号需要转义为 \\\"
+4. **name 字段只能包含字母、数字和连字符(-)，不能包含空格、下划线、中文或其他特殊字符**`;
 
   const messages = [
     { role: 'system', content: systemPrompt },

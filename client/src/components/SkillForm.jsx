@@ -28,6 +28,7 @@ export default function SkillForm({ skill, onSubmit, onCancel, onChange }) {
       <div className="form-group">
         <label>名称 *</label>
         <input value={form.name} onChange={e => set('name', e.target.value)} required placeholder="例如: pdf-editor" />
+        <p style={{ fontSize: 11, color: '#999', marginTop: 4 }}>只能包含字母、数字和连字符(-)</p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div className="form-group">

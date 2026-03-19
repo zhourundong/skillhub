@@ -4,6 +4,15 @@ const archiver = require('archiver');
 const fetch = require('node-fetch');
 const BaseChannel = require('./base');
 
+/**
+ * 生成安全的 zip 名称：name@version
+ */
+function getZipName(skill) {
+  const safeName = (skill.name || 'unnamed').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-');
+  const version = skill.version || '1.0.0';
+  return `${safeName}@${version}`;
+}
+
 class RemoteChannel extends BaseChannel {
   constructor(config) {
     super(config);
@@ -24,14 +33,14 @@ class RemoteChannel extends BaseChannel {
       throw new Error('Skill 目录不存在');
     }
 
-    // 清理文件名中的特殊字符
-    const safeName = (skill.name || skill.id).replace(/[<>:"/\\|?*\s]/g, '-');
+    // 生成 zip 名称
+    const zipName = getZipName(skill);
 
     // 创建 zip 文件
-    const zipBuffer = await this._createZip(skillDir, safeName);
+    const zipBuffer = await this._createZip(skillDir, zipName);
 
     // 发送到远程服务器
-    const result = await this._sendToRemote(skill, zipBuffer, safeName);
+    const result = await this._sendToRemote(skill, zipBuffer, zipName);
 
     return result;
   }
@@ -45,10 +54,11 @@ class RemoteChannel extends BaseChannel {
       archive.on('end', () => resolve(Buffer.concat(chunks)));
       archive.on('error', (err) => reject(err));
 
-      // 遍历目录，排除 metadata.json
+      // 遍历目录，排除 metadata.json 和 custom_dirs.json
+      const excludeFiles = ['metadata.json', 'custom_dirs.json'];
       const files = fs.readdirSync(skillDir);
       for (const file of files) {
-        if (file === 'metadata.json') continue; // 排除 metadata.json
+        if (excludeFiles.includes(file)) continue;
 
         const filePath = path.join(skillDir, file);
         const stat = fs.statSync(filePath);
@@ -99,6 +109,7 @@ class RemoteChannel extends BaseChannel {
     return {
       success: true,
       url: this.url,
+      zipName,
       response: result
     };
   }
@@ -107,13 +118,15 @@ class RemoteChannel extends BaseChannel {
     // 如果配置了下架 URL，则调用远程接口
     if (this.unpublishUrl) {
       try {
+        const zipName = getZipName(skill);
         const formData = new (require('form-data'))();
         formData.append('metadata', JSON.stringify({
           id: skill.id,
           name: skill.name,
           description: skill.description,
           version: skill.version,
-          category: skill.category
+          category: skill.category,
+          zipName
         }));
 
         const response = await fetch(this.unpublishUrl, {

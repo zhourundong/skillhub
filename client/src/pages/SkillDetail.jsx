@@ -25,6 +25,7 @@ export default function SkillDetail() {
   const [channels, setChannels] = useState([]);
   const [editing, setEditing] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [unpublishing, setUnpublishing] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState('');
   const [confirm, setConfirm] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -71,23 +72,44 @@ export default function SkillDetail() {
     try {
       await skillsApi.publish(id, selectedChannel || undefined);
       load();
+      setConfirm({
+        message: '发布成功！',
+        onConfirm: () => setConfirm(null),
+        type: 'success'
+      });
     } catch (err) {
       setConfirm({
         message: '发布失败: ' + (err.response?.data?.error || err.message),
         onConfirm: () => setConfirm(null),
         type: 'error'
       });
+    } finally {
+      setPublishing(false);
     }
-    setPublishing(false);
   };
 
   const handleUnpublish = () => {
     setConfirm({
       message: '确认下架此 Skill？',
       onConfirm: async () => {
-        await skillsApi.unpublish(id);
-        load();
         setConfirm(null);
+        setUnpublishing(true);
+        try {
+          await skillsApi.unpublish(id);
+          load();
+          setConfirm({
+            message: '下架成功！',
+            onConfirm: () => setConfirm(null),
+            type: 'success'
+          });
+        } catch (err) {
+          setConfirm({
+            message: '下架失败: ' + (err.response?.data?.error || err.message),
+            onConfirm: () => setConfirm(null),
+            type: 'error'
+          });
+        }
+        setUnpublishing(false);
       }
     });
   };
@@ -179,7 +201,9 @@ export default function SkillDetail() {
               </div>
             )}
             {isReadonly && (
-              <button className="btn btn-danger" onClick={handleUnpublish}>下架</button>
+              <button className="btn btn-danger" onClick={handleUnpublish} disabled={unpublishing}>
+                {unpublishing ? '下架中...' : '下架'}
+              </button>
             )}
             {!isReadonly && (
               <button className="btn btn-danger" onClick={handleDelete}>删除</button>
@@ -245,6 +269,30 @@ export default function SkillDetail() {
           onCancel={() => setConfirm(null)}
           type={confirm.type}
         />
+      )}
+
+      {/* Loading Overlay */}
+      {(publishing || unpublishing) && (
+        <div className="modal-overlay">
+          <div style={{
+            background: '#fff',
+            padding: '24px 32px',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12
+          }}>
+            <div className="spinner" style={{
+              width: 20,
+              height: 20,
+              border: '2px solid #e8e8e8',
+              borderTopColor: '#1890ff',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite'
+            }} />
+            <span>{publishing ? '正在发布...' : '正在下架...'}</span>
+          </div>
+        </div>
       )}
 
       {showPreview && (

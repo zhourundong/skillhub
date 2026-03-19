@@ -234,8 +234,8 @@ const db = {
   },
 
   findSkillByName(name, excludeId) {
-    const skills = this.listSkills({});
-    return skills.find(s => s.name === name && s.id !== excludeId);
+    const result = this.listSkills({ pageSize: 10000 }); // 获取所有技能
+    return result.data.find(s => s.name === name && s.id !== excludeId);
   },
 
   getRawSkillFile(id) {

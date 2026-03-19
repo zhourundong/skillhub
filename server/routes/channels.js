@@ -30,6 +30,27 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'remote 渠道必须配置 url 属性' });
   }
 
+  // github 渠道必须配置 owner, repo, token
+  if (type === 'github') {
+    if (!config) {
+      return res.status(400).json({ error: 'github 渠道必须配置' });
+    }
+    // 支持 repoUrl 自动解析
+    if (config.repoUrl && (!config.owner || !config.repo)) {
+      const match = config.repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+      if (match) {
+        config.owner = match[1];
+        config.repo = match[2].replace(/\.git$/, '');
+      }
+    }
+    if (!config.owner || !config.repo) {
+      return res.status(400).json({ error: 'github 渠道必须配置 owner 和 repo（或 repoUrl）' });
+    }
+    if (!config.token) {
+      return res.status(400).json({ error: 'github 渠道必须配置 token' });
+    }
+  }
+
   const channel = db.createChannel({
     name,
     type,
@@ -53,10 +74,28 @@ router.put('/:id', (req, res) => {
     return res.status(400).json({ error: 'local 渠道必须配置 outputDir 属性' });
   }
 
+  // github 渠道验证
+  if (ch.type === 'github') {
+    // 支持 repoUrl 自动解析
+    if (newConfig.repoUrl && (!newConfig.owner || !newConfig.repo)) {
+      const match = newConfig.repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+      if (match) {
+        newConfig.owner = match[1];
+        newConfig.repo = match[2].replace(/\.git$/, '');
+      }
+    }
+    if (!newConfig.owner || !newConfig.repo) {
+      return res.status(400).json({ error: 'github 渠道必须配置 owner 和 repo（或 repoUrl）' });
+    }
+    if (!newConfig.token) {
+      return res.status(400).json({ error: 'github 渠道必须配置 token' });
+    }
+  }
+
   const updateData = {
     name: name || ch.name,
     config: newConfig,
-    enabled: enabled ?? ch.enabled
+    enabled: enabled !== undefined ? Boolean(enabled) : ch.enabled
   };
 
   if (isDefault !== undefined) {
@@ -76,6 +115,12 @@ router.post('/:id/test', async (req, res) => {
 
     const publisher = createChannel(ch.type, ch.config);
     const result = await publisher.healthCheck();
+
+    // 如果健康检查失败，返回错误状态
+    if (!result.healthy) {
+      return res.status(400).json({ error: result.error || '连接失败', data: result });
+    }
+
     res.json({ data: result });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -456,6 +456,7 @@ export default function AiGenerator({ onComplete, onCancel }) {
                 onChange={e => updateField('name', e.target.value)}
                 placeholder="技能名称"
               />
+              <p style={{ fontSize: 11, color: '#999', marginTop: 4 }}>只能包含字母、数字和连字符(-)</p>
             </div>
             <div className="form-group">
               <label>描述</label>

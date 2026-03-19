@@ -194,3 +194,7 @@ body {
 
 .empty { text-align: center; padding: 60px 20px; color: #999; }
 .empty p { font-size: 15px; margin-bottom: 16px; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
