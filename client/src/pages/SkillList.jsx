@@ -41,7 +41,7 @@ function getPaginationState(pagination) {
 
 export default function SkillList() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [skills, setSkills] = useState([]);
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -57,6 +57,9 @@ export default function SkillList() {
   });
 
   const loadSkills = useCallback(async () => {
+    // Wait for auth to finish loading before making API calls
+    if (authLoading) return;
+
     try {
       setLoading(true);
 
@@ -91,7 +94,7 @@ export default function SkillList() {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, keyword, pagination.page, pagination.pageSize, statusFilter]);
+  }, [authLoading, isAuthenticated, keyword, pagination.page, pagination.pageSize, statusFilter]);
 
   useEffect(() => {
     loadSkills();
@@ -341,8 +344,8 @@ export default function SkillList() {
                   </span>
                   <span>AI 生成</span>
                 </button>
-                <button type="button" className="btn skill-list-create-btn" onClick={() => setShowForm(true)}>
-                  <span className="skill-list-action-icon" aria-hidden="true">
+                <button type="button" className="btn app-create-btn skill-list-create-btn" onClick={() => setShowForm(true)}>
+                  <span className="app-create-btn-icon skill-list-action-icon" aria-hidden="true">
                     <svg viewBox="0 0 20 20" focusable="false">
                       <path d="M10 4.5v11" />
                       <path d="M4.5 10h11" />
@@ -423,10 +426,12 @@ export default function SkillList() {
                   </p>
 
                   <div className="skill-list-card-meta">
-                    <span className={`skill-list-category-chip ${skill.category ? '' : 'muted'}`}>
-                      {skill.category || '-'}
-                    </span>
-                    <span>{formatDate(skill.updated_at || skill.updatedAt)}</span>
+                    {skill.category && (
+                      <span className="skill-list-category-chip">
+                        {skill.category}
+                      </span>
+                    )}
+                    <span className="skill-list-card-time">{formatDate(skill.updated_at || skill.updatedAt)}</span>
                   </div>
 
                 </article>

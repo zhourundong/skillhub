@@ -193,6 +193,7 @@
 }
 
 .skill-list-create-btn {
+  min-width: 132px;
   background: linear-gradient(135deg, #6d7df2 0%, #5b66dd 100%);
   box-shadow: 0 12px 24px rgba(91, 102, 221, 0.24);
 }
@@ -327,11 +328,15 @@
 .skill-list-card-meta {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   margin-top: auto;
   color: #8b95ab;
   font-size: 12px;
-  flex-wrap: wrap;
+}
+
+.skill-list-card-time {
+  margin-left: auto;
 }
 
 .skill-list-share-icon-btn {

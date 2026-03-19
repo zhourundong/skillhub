@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { channelsApi } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import './Channels.css';
 
@@ -312,15 +313,14 @@ function SSHConfigForm({ config, onChange, onTest, testing }) {
       </div>
 
       <div className="form-group channels-config-span">
-        <label>私钥内容或文件路径</label>
+        <label>私钥内容</label>
         <textarea
-          placeholder="粘贴私钥内容，或填写私钥文件路径"
+          placeholder="私钥"
           value={config.privateKey || ''}
           onChange={(event) => update('privateKey', event.target.value)}
           rows={4}
           className="channels-code-textarea"
         />
-        <span className="channels-field-hint">支持直接粘贴私钥内容，也支持填写服务器上的私钥文件路径。</span>
       </div>
 
       <div className="channels-inline-actions channels-config-span">
@@ -338,6 +338,7 @@ function SSHConfigForm({ config, onChange, onTest, testing }) {
 }
 
 export default function Channels() {
+  const { user, isAdmin } = useAuth();
   const [channels, setChannels] = useState([]);
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -369,7 +370,15 @@ export default function Channels() {
 
   const resetCreateState = () => {
     setShowForm(false);
-    setForm(createEmptyForm());
+    // 普通用户默认选择非 local 类型
+    // 优先使用 types 中的非 local 类型，否则使用硬编码的默认值
+    const nonLocalType = types.find(t => t !== 'local') || 'github';
+    const defaultType = isAdmin ? 'local' : nonLocalType;
+    setForm({
+      name: '',
+      type: defaultType,
+      config: DEFAULT_CONFIGS[defaultType] || '{}'
+    });
     setGitHubConfig(createEmptyGitHubConfig());
     setSshConfig(createEmptySshConfig());
     setTesting(false);
@@ -403,6 +412,10 @@ export default function Channels() {
     const normalizedKeyword = normalizeText(keyword);
 
     return channels.filter((channel) => {
+      // 显示启用的渠道，或者自己创建的渠道（无论启用状态）
+      const isOwnChannel = channel.created_by === user?.id;
+      if (!channel.enabled && !isOwnChannel && !isAdmin) return false;
+
       const matchesType = typeFilter === 'all' ? true : channel.type === typeFilter;
       const matchesKeyword = normalizedKeyword
         ? [channel.name, channel.type, getChannelSummary(channel)]
@@ -411,7 +424,12 @@ export default function Channels() {
 
       return matchesType && matchesKeyword;
     });
-  }, [channels, keyword, typeFilter]);
+  }, [channels, keyword, typeFilter, user?.id, isAdmin]);
+
+  // 判断是否可以操作渠道（管理员或自己创建的）
+  const canManageChannel = (channel) => {
+    return isAdmin || channel.created_by === user?.id;
+  };
 
   const enabledCount = channels.filter((channel) => channel.enabled).length;
   const defaultCount = channels.filter((channel) => channel.isDefault).length;
@@ -618,8 +636,8 @@ export default function Channels() {
               </select>
             </div>
 
-            <button type="button" className="btn channels-create-btn" onClick={() => setShowForm(true)}>
-              <span className="channels-create-icon" aria-hidden="true">
+            <button type="button" className="btn app-create-btn channels-create-btn" onClick={() => setShowForm(true)}>
+              <span className="app-create-btn-icon channels-create-icon" aria-hidden="true">
                 <svg viewBox="0 0 20 20" focusable="false">
                   <path d="M10 4.5v11" />
                   <path d="M4.5 10h11" />
@@ -643,7 +661,11 @@ export default function Channels() {
             <div className="channels-list">
               {filteredChannels.map((channel) => {
                 const typeMeta = getChannelTypeMeta(channel.type);
-                const displayConfig = JSON.stringify(maskSensitiveFields(channel.config || {}), null, 2);
+                const canManage = canManageChannel(channel);
+                // 普通用户查看非自己创建的渠道，配置摘要做脱敏处理
+                const displayConfig = canManage
+                  ? JSON.stringify(maskSensitiveFields(channel.config || {}), null, 2)
+                  : '***';
 
                 return (
                   <article className="channel-row" key={channel.id}>
@@ -673,26 +695,32 @@ export default function Channels() {
                     </div>
 
                     <div className="channel-actions" data-label="操作">
-                      <button type="button" className="channel-action-btn" onClick={() => handleTest(channel.id)}>
-                        测试连接
-                      </button>
-                      <button type="button" className="channel-action-btn" onClick={() => handleToggle(channel)}>
-                        {channel.enabled ? '禁用' : '启用'}
-                      </button>
-                      {channel.enabled && !channel.isDefault ? (
-                        <button type="button" className="channel-action-btn" onClick={() => handleSetDefault(channel)}>
-                          设为默认
-                        </button>
-                      ) : null}
-                      {!channel.enabled ? (
-                        <button type="button" className="channel-action-btn" onClick={() => handleEdit(channel)}>
-                          编辑
-                        </button>
-                      ) : null}
-                      {channels.length > 1 && !channel.enabled ? (
-                        <button type="button" className="channel-action-btn danger" onClick={() => handleDelete(channel)}>
-                          删除
-                        </button>
+                      {canManage ? (
+                        <>
+                          <button type="button" className="channel-action-btn" onClick={() => handleTest(channel.id)}>
+                            测试连接
+                          </button>
+                          <button type="button" className="channel-action-btn" onClick={() => handleToggle(channel)}>
+                            {channel.enabled ? '禁用' : '启用'}
+                          </button>
+                          {channel.enabled && !channel.isDefault ? (
+                            <button type="button" className="channel-action-btn" onClick={() => handleSetDefault(channel)}>
+                              设为默认
+                            </button>
+                          ) : null}
+                          {!channel.enabled ? (
+                            <>
+                              <button type="button" className="channel-action-btn" onClick={() => handleEdit(channel)}>
+                                编辑
+                              </button>
+                              {channels.length > 1 ? (
+                                <button type="button" className="channel-action-btn danger" onClick={() => handleDelete(channel)}>
+                                  删除
+                                </button>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </>
                       ) : null}
                     </div>
                   </article>
@@ -734,17 +762,14 @@ export default function Channels() {
 
                 <div className="form-group">
                   <label>渠道类型</label>
-                  <div className="channels-select-wrap">
                     <select
-                      className="channels-native-select"
                       value={form.type}
                       onChange={(event) => handleTypeChange(event.target.value)}
                     >
-                      {types.map((type) => (
+                      {types.filter((type) => isAdmin || type !== 'local').map((type) => (
                         <option key={type} value={type}>{getChannelTypeMeta(type).label}</option>
                       ))}
                     </select>
-                  </div>
                 </div>
               </div>
 

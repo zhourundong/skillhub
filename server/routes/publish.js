@@ -1,13 +1,21 @@
 const express = require('express');
 const db = require('../db');
 const { createChannel } = require('../channels');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-// All publish routes require authentication and admin role
+// All publish routes require authentication
 router.use(authenticateToken);
-router.use(requireAdmin);
+
+// Helper: check if user can access channel
+function canAccessChannel(user, channel) {
+  if (!user || !channel) return false;
+  // Admin can access all channels
+  if (user.role === 'admin') return true;
+  // Regular user can only access their own channels
+  return channel.created_by === user.id;
+}
 
 // 发布 skill 到指定渠道（默认使用默认渠道）
 router.post('/:skillId/publish', async (req, res) => {
@@ -25,6 +33,11 @@ router.post('/:skillId/publish', async (req, res) => {
     }
 
     if (!channel) return res.status(400).json({ error: '没有可用的发布渠道，请先启用一个渠道' });
+
+    // Check permission
+    if (!canAccessChannel(req.user, channel)) {
+      return res.status(403).json({ error: '没有权限使用此渠道' });
+    }
 
     const publisher = createChannel(channel.type, channel.config);
     const result = await publisher.publish(skill);
@@ -55,18 +68,31 @@ router.post('/:skillId/unpublish', async (req, res) => {
     const records = (await db.listPublishRecords(req.params.skillId))
       .filter(r => r.status === 'published');
 
+    // Filter records by user's accessible channels
+    const isAdmin = req.user.role === 'admin';
+    const accessibleRecords = [];
+
     for (const record of records) {
       const channel = await db.getChannel(record.channel_id);
-      if (channel) {
-        const publisher = createChannel(channel.type, channel.config);
-        await publisher.unpublish(skill);
+      if (channel && canAccessChannel(req.user, channel)) {
+        accessibleRecords.push({ record, channel });
       }
     }
 
-    await db.unpublishRecords(req.params.skillId);
-    await db.updateSkill(req.params.skillId, { status: 'unpublished' });
+    for (const { record, channel } of accessibleRecords) {
+      const publisher = createChannel(channel.type, channel.config);
+      await publisher.unpublish(skill);
+      await db.unpublishRecord(record.id);
+    }
 
-    res.json({ message: '下架成功', data: { unpublished_count: records.length } });
+    // Update skill status only if no more published records
+    const remainingRecords = await db.listPublishRecords(req.params.skillId);
+    const stillPublished = remainingRecords.some(r => r.status === 'published');
+    if (!stillPublished) {
+      await db.updateSkill(req.params.skillId, { status: 'unpublished' });
+    }
+
+    res.json({ message: '下架成功', data: { unpublished_count: accessibleRecords.length } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -75,8 +101,20 @@ router.post('/:skillId/unpublish', async (req, res) => {
 // 获取 skill 的发布记录
 router.get('/:skillId/records', async (req, res) => {
   try {
-    const records = await db.listPublishRecords(req.params.skillId);
-    res.json({ data: records });
+    const allRecords = await db.listPublishRecords(req.params.skillId);
+
+    // Filter records by user's accessible channels
+    const isAdmin = req.user.role === 'admin';
+    const filteredRecords = [];
+
+    for (const record of allRecords) {
+      const channel = await db.getChannel(record.channel_id);
+      if (channel && canAccessChannel(req.user, channel)) {
+        filteredRecords.push(record);
+      }
+    }
+
+    res.json({ data: filteredRecords });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

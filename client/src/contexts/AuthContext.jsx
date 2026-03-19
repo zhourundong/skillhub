@@ -23,6 +23,7 @@ export function AuthProvider({ children }) {
           setUser(userData);
         })
         .catch(() => {
+          // Token is invalid or expired, clear session silently
           clearAuthSession();
         })
         .finally(() => {

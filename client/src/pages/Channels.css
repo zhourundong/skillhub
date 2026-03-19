@@ -78,43 +78,7 @@
 }
 
 .channels-create-btn {
-  min-height: 44px;
-  padding: 0 16px;
-  border-radius: 14px;
-  gap: 10px;
-  color: #fff;
-  background: linear-gradient(135deg, #6d7df2 0%, #5b66dd 100%);
-  box-shadow: 0 12px 24px rgba(91, 102, 221, 0.24);
-  font-size: 0;
-}
-
-.channels-create-btn:hover {
-  background: linear-gradient(135deg, #6474ea 0%, #525dd4 100%);
-}
-
-.channels-create-btn span {
-  font-size: 14px;
-}
-
-.channels-create-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.18);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
-}
-
-.channels-create-icon svg {
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  flex-shrink: 0;
 }
 
 .channels-meta-strip {
@@ -457,50 +421,6 @@
 
 .channels-config-span {
   grid-column: 1 / -1;
-}
-
-.channels-select-wrap {
-  position: relative;
-}
-
-.channels-select-wrap::after {
-  content: '';
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  border-right: 2px solid #5e6f97;
-  border-bottom: 2px solid #5e6f97;
-  transform: translateY(-65%) rotate(45deg);
-  pointer-events: none;
-}
-
-.channels-native-select {
-  appearance: none;
-  width: 100%;
-  min-height: 48px;
-  padding: 0 44px 0 16px;
-  border-radius: 16px;
-  border: 1px solid #dbe3f3;
-  background: linear-gradient(180deg, #fbfcff 0%, #f4f7fd 100%);
-  color: #22304c;
-  font-size: 14px;
-  font-weight: 600;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-}
-
-.channels-native-select:hover {
-  border-color: #c8d3eb;
-  background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%);
-}
-
-.channels-native-select:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.12);
-  background: #fff;
 }
 
 .channels-field-hint {

@@ -48,7 +48,10 @@ function getSkillDir(id) {
 
 // Helper: parse YAML frontmatter from content
 function parseFrontmatter(content) {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  // Remove BOM if present and normalize line endings
+  const normalized = content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+
+  const match = normalized.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { frontmatter: {}, body: content };
 
   const frontmatter = {};
@@ -155,7 +158,7 @@ const db = {
   async getUserById(id) {
     const pool = getPool();
     const [rows] = await pool.execute(
-      `SELECT id, username, display_name, role, created_at, updated_at FROM ${TABLES.users} WHERE id = ?`,
+      `SELECT * FROM ${TABLES.users} WHERE id = ?`,
       [id]
     );
     return rows[0] || null;
@@ -577,9 +580,12 @@ const db = {
   },
 
   // ========== Channels ==========
-  async listChannels() {
+  async listChannels(userId = null, isAdmin = false) {
     const pool = getPool();
-    const [rows] = await pool.execute(`SELECT * FROM ${TABLES.channels} ORDER BY created_at ASC`);
+    // All users can see all channels
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.channels} ORDER BY created_at ASC`
+    );
     return rows.map(row => ({
       ...row,
       config: typeof row.config === 'string' ? JSON.parse(row.config) : row.config,
@@ -640,14 +646,14 @@ const db = {
     };
   },
 
-  async createChannel(data) {
+  async createChannel(data, createdBy = null) {
     const pool = getPool();
     const id = uuidv4();
     const now = new Date();
 
     await pool.execute(
-      `INSERT INTO ${TABLES.channels} (id, name, type, config, enabled, is_default, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ${TABLES.channels} (id, name, type, config, enabled, is_default, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         data.name,
@@ -655,6 +661,7 @@ const db = {
         JSON.stringify(data.config || {}),
         data.enabled ? 1 : 0,
         0,
+        createdBy,
         now
       ]
     );
@@ -756,6 +763,16 @@ const db = {
       [id]
     );
     return rows[0];
+  },
+
+  async unpublishRecord(recordId) {
+    const pool = getPool();
+    const now = new Date();
+
+    await pool.execute(
+      `UPDATE ${TABLES.publish_records} SET status = 'unpublished', unpublished_at = ? WHERE id = ? AND status = 'published'`,
+      [now, recordId]
+    );
   },
 
   async unpublishRecords(skillId) {

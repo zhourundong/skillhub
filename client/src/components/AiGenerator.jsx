@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import ConfirmDialog from './ConfirmDialog';
+import { getStoredToken } from '../utils/authStorage';
 
 export default function AiGenerator({ onComplete, onCancel }) {
   const [prompt, setPrompt] = useState('');
@@ -45,9 +46,13 @@ export default function AiGenerator({ onComplete, onCancel }) {
     abortControllerRef.current = new AbortController();
 
     try {
+      const token = getStoredToken();
       const response = await fetch('/api/ai/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ prompt, language, fileOptions }),
         signal: abortControllerRef.current.signal
       });

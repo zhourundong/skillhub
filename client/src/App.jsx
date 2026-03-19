@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
+import { authApi } from './api';
 import ProtectedRoute from './components/ProtectedRoute';
 import SkillList from './pages/SkillList';
 import SkillDetail from './pages/SkillDetail';
@@ -27,10 +28,59 @@ function LogoIcon() {
 function Header() {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      setPasswordError('请填写所有字段');
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 3) {
+      setPasswordError('新密码长度至少 3 位');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('两次输入的新密码不一致');
+      return;
+    }
+
+    try {
+      setPasswordLoading(true);
+      await authApi.changePassword(passwordForm.oldPassword, passwordForm.newPassword);
+      setPasswordSuccess('密码修改成功');
+      setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        setPasswordSuccess('');
+      }, 1500);
+    } catch (err) {
+      setPasswordError(err.response?.data?.error || '密码修改失败');
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  const closePasswordModal = () => {
+    if (passwordLoading) return;
+    setShowPasswordModal(false);
+    setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+    setPasswordError('');
+    setPasswordSuccess('');
   };
 
   return (
@@ -42,9 +92,7 @@ function Header() {
         </div>
         <nav>
           <NavLink to="/" className={({ isActive }) => isActive ? 'active' : ''}>Skills 列表</NavLink>
-          {isAdmin && (
-            <NavLink to="/channels" className={({ isActive }) => isActive ? 'active' : ''}>发布渠道</NavLink>
-          )}
+          <NavLink to="/channels" className={({ isActive }) => isActive ? 'active' : ''}>发布渠道</NavLink>
           {isAdmin && (
             <NavLink to="/users" className={({ isActive }) => isActive ? 'active' : ''}>用户管理</NavLink>
           )}
@@ -54,6 +102,7 @@ function Header() {
             <>
               <span className="user-name">{user.displayName || user.username}</span>
               <span className="user-role">{user.role === 'admin' ? '管理员' : '用户'}</span>
+              <button onClick={() => setShowPasswordModal(true)} className="btn-password">修改密码</button>
               <button onClick={handleLogout} className="btn-logout">退出</button>
             </>
           ) : (
@@ -61,6 +110,55 @@ function Header() {
           )}
         </div>
       </div>
+
+      {/* Password Modal */}
+      {showPasswordModal && (
+        <div className="modal-overlay" onClick={closePasswordModal}>
+          <div className="modal password-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>修改密码</h3>
+            <form onSubmit={handleChangePassword}>
+              <div className="form-group">
+                <label>原密码</label>
+                <input
+                  type="password"
+                  value={passwordForm.oldPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, oldPassword: e.target.value })}
+                  placeholder="请输入原密码"
+                  autoFocus
+                />
+              </div>
+              <div className="form-group">
+                <label>新密码</label>
+                <input
+                  type="password"
+                  value={passwordForm.newPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                  placeholder="请输入新密码（至少 3 位）"
+                />
+              </div>
+              <div className="form-group">
+                <label>确认新密码</label>
+                <input
+                  type="password"
+                  value={passwordForm.confirmPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                  placeholder="请再次输入新密码"
+                />
+              </div>
+              {passwordError && <div className="error-message">{passwordError}</div>}
+              {passwordSuccess && <div className="success-message">{passwordSuccess}</div>}
+              <div className="modal-actions">
+                <button type="button" className="btn btn-default" onClick={closePasswordModal} disabled={passwordLoading}>
+                  取消
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={passwordLoading}>
+                  {passwordLoading ? '提交中...' : '确认修改'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .user-info {
@@ -82,17 +180,44 @@ function Header() {
           border-radius: 4px;
         }
 
-        .btn-logout {
-          padding: 6px 12px;
-          border: 1px solid #ddd;
-          background: white;
-          border-radius: 4px;
+        .btn-password {
+          min-height: 38px;
+          padding: 0 14px;
+          border: 1px solid rgba(255, 255, 255, 0.24);
+          background: rgba(255, 255, 255, 0.94);
+          color: #667eea;
+          border-radius: 12px;
           cursor: pointer;
           font-size: 14px;
+          font-weight: 600;
+          box-shadow: 0 10px 20px rgba(43, 54, 98, 0.12);
+          transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+
+        .btn-password:hover {
+          background: #ffffff;
+          transform: translateY(-1px);
+          box-shadow: 0 14px 26px rgba(43, 54, 98, 0.16);
+        }
+
+        .btn-logout {
+          min-height: 38px;
+          padding: 0 14px;
+          border: 1px solid rgba(255, 255, 255, 0.24);
+          background: rgba(255, 255, 255, 0.94);
+          color: #33415f;
+          border-radius: 12px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 600;
+          box-shadow: 0 10px 20px rgba(43, 54, 98, 0.12);
+          transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
         }
 
         .btn-logout:hover {
-          background: #f5f5f5;
+          background: #ffffff;
+          transform: translateY(-1px);
+          box-shadow: 0 14px 26px rgba(43, 54, 98, 0.16);
         }
 
         .btn-login {
@@ -106,6 +231,80 @@ function Header() {
 
         .btn-login:hover {
           opacity: 0.9;
+        }
+
+        .password-modal {
+          max-width: 400px;
+        }
+
+        .password-modal h3 {
+          margin: 0 0 20px 0;
+          font-size: 18px;
+          color: #333;
+        }
+
+        .password-modal .form-group {
+          margin-bottom: 16px;
+        }
+
+        .password-modal label {
+          display: block;
+          margin-bottom: 6px;
+          font-size: 14px;
+          color: #555;
+        }
+
+        .password-modal input {
+          width: 100%;
+          padding: 10px 12px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          font-size: 14px;
+          box-sizing: border-box;
+        }
+
+        .password-modal input:focus {
+          outline: none;
+          border-color: #667eea;
+        }
+
+        .password-modal .error-message {
+          color: #e74c3c;
+          font-size: 14px;
+          margin-bottom: 12px;
+        }
+
+        .password-modal .success-message {
+          color: #27ae60;
+          font-size: 14px;
+          margin-bottom: 12px;
+        }
+
+        .password-modal .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          margin-top: 20px;
+        }
+
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .modal {
+          background: white;
+          padding: 24px;
+          border-radius: 12px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
         }
       `}</style>
     </header>
@@ -165,7 +364,7 @@ export default function App() {
                   <Route
                     path="/channels"
                     element={
-                      <ProtectedRoute requireAdmin>
+                      <ProtectedRoute>
                         <Channels />
                       </ProtectedRoute>
                     }

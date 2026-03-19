@@ -50,7 +50,8 @@ export default function SkillDetail() {
         console.log('Could not load records:', err.message);
       }
 
-      if (isAdmin) {
+      // 所有登录用户都可以看到渠道列表
+      if (isAuthenticated) {
         try {
           const c = await channelsApi.list();
           setChannels(c.data);
@@ -77,7 +78,7 @@ export default function SkillDetail() {
 
   const canEdit = isAuthenticated && (isOwner(skill.created_by) || isAdmin) && skill.status !== 'published';
   const canDelete = isAuthenticated && (isOwner(skill.created_by) || isAdmin) && skill.status !== 'published';
-  const canPublish = isAdmin;
+  const canPublish = isAuthenticated && (isOwner(skill.created_by) || isAdmin);
   const isReadonly = !canEdit;
   const isAnonymousReadonly = !isAuthenticated;
 

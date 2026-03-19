@@ -13,16 +13,18 @@ api.interceptors.request.use((config) => {
 });
 
 // Response interceptor - handle 401 errors
+// Note: Don't auto-clear session here, let the caller handle it
+// This prevents race conditions with AuthContext initialization
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      clearAuthSession();
       // Only redirect to login if user was trying to access protected routes
       // Public routes like viewing skills should not redirect
       const protectedPaths = ['/channels', '/users'];
       const isProtectedRoute = protectedPaths.some(p => window.location.pathname.startsWith(p));
       if (isProtectedRoute) {
+        clearAuthSession();
         window.location.href = '/login';
       }
     }

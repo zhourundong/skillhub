@@ -1,18 +1,28 @@
 const express = require('express');
 const db = require('../db');
 const { getRegisteredTypes, createChannel } = require('../channels');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-// All channel routes require authentication and admin role
+// All channel routes require authentication
 router.use(authenticateToken);
-router.use(requireAdmin);
 
-// 获取所有渠道
+// Helper: check if user can access channel
+function canAccessChannel(user, channel) {
+  if (!user || !channel) return false;
+  // Admin can access all channels
+  if (user.role === 'admin') return true;
+  // Regular user can only access their own channels
+  return channel.created_by === user.id;
+}
+
+// 获取渠道列表
 router.get('/', async (req, res) => {
   try {
-    const channels = await db.listChannels();
+    const { user } = req;
+    const isAdmin = user.role === 'admin';
+    const channels = await db.listChannels(user.id, isAdmin);
     res.json({ data: channels, registeredTypes: getRegisteredTypes() });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -28,6 +38,12 @@ router.post('/', async (req, res) => {
     const registered = getRegisteredTypes();
     if (!registered.includes(type)) {
       return res.status(400).json({ error: `不支持的渠道类型: ${type}，可用: ${registered.join(', ')}` });
+    }
+
+    // 普通用户禁止创建 local 渠道
+    const isAdmin = req.user.role === 'admin';
+    if (type === 'local' && !isAdmin) {
+      return res.status(403).json({ error: '普通用户不能创建本地目录渠道' });
     }
 
     // local 渠道必须配置 outputDir
@@ -66,7 +82,7 @@ router.post('/', async (req, res) => {
       type,
       config: config || {},
       enabled: enabled ?? false
-    });
+    }, req.user.id);
 
     res.status(201).json({ data: channel });
   } catch (err) {
@@ -79,6 +95,11 @@ router.put('/:id', async (req, res) => {
   try {
     const ch = await db.getChannel(req.params.id);
     if (!ch) return res.status(404).json({ error: '渠道不存在' });
+
+    // Check permission
+    if (!canAccessChannel(req.user, ch)) {
+      return res.status(403).json({ error: '没有权限操作此渠道' });
+    }
 
     const { name, config, enabled, isDefault } = req.body;
     const newConfig = config || ch.config;
@@ -130,6 +151,11 @@ router.post('/:id/test', async (req, res) => {
     const ch = await db.getChannel(req.params.id);
     if (!ch) return res.status(404).json({ error: '渠道不存在' });
 
+    // Check permission
+    if (!canAccessChannel(req.user, ch)) {
+      return res.status(403).json({ error: '没有权限操作此渠道' });
+    }
+
     const publisher = createChannel(ch.type, ch.config);
     const result = await publisher.healthCheck();
 
@@ -172,14 +198,22 @@ router.post('/test-config', async (req, res) => {
 // 删除渠道
 router.delete('/:id', async (req, res) => {
   try {
-    const channels = await db.listChannels();
-    if (channels.length <= 1) {
-      return res.status(400).json({ error: '至少需要保留一个渠道' });
-    }
-
     const ch = await db.getChannel(req.params.id);
     if (!ch) {
       return res.status(404).json({ error: '渠道不存在' });
+    }
+
+    // Check permission
+    if (!canAccessChannel(req.user, ch)) {
+      return res.status(403).json({ error: '没有权限操作此渠道' });
+    }
+
+    // Check if this is the only channel for the user
+    const isAdmin = req.user.role === 'admin';
+    const channels = await db.listChannels(req.user.id, isAdmin);
+
+    if (channels.length <= 1) {
+      return res.status(400).json({ error: '至少需要保留一个渠道' });
     }
 
     if (ch.enabled) {

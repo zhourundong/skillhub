@@ -289,8 +289,8 @@ export default function Users() {
                 <option value="user">普通用户</option>
               </select>
             </div>
-            <button type="button" className="btn users-create-btn" onClick={openCreateModal}>
-              <span className="users-create-icon" aria-hidden="true">
+            <button type="button" className="btn app-create-btn users-create-btn" onClick={openCreateModal}>
+              <span className="app-create-btn-icon users-create-icon" aria-hidden="true">
                 <svg viewBox="0 0 20 20" focusable="false">
                   <path d="M10 4.5v11" />
                   <path d="M4.5 10h11" />

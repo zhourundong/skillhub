@@ -46,10 +46,13 @@ CREATE TABLE IF NOT EXISTS t_sh_channels (
   config JSON,
   enabled BOOLEAN DEFAULT FALSE,
   is_default BOOLEAN DEFAULT FALSE,
+  created_by VARCHAR(36),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES t_sh_users(id) ON DELETE SET NULL,
   INDEX idx_type (type),
-  INDEX idx_enabled (enabled)
+  INDEX idx_enabled (enabled),
+  INDEX idx_created_by (created_by)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 3. Publish records table
