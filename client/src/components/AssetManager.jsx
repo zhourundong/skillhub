@@ -96,7 +96,7 @@ export default function AssetManager({ skillId, readonly }) {
               <th style={{ padding: '8px 0' }}>文件名</th>
               <th>大小</th>
               <th>上传时间</th>
-              <th style={{ width: readonly ? 80 : 120 }}></th>
+              {!readonly && <th style={{ width: 120 }}></th>}
             </tr>
           </thead>
           <tbody>
@@ -105,16 +105,16 @@ export default function AssetManager({ skillId, readonly }) {
                 <td style={{ padding: '8px 0' }}>{a.name}</td>
                 <td>{formatSize(a.size)}</td>
                 <td>{formatDateTime(a.created_at)}</td>
-                <td style={{ textAlign: 'right' }}>
-                  <a
-                    href={`/api/skills/${skillId}/assets/${encodeURIComponent(a.name)}`}
-                    className="btn btn-default"
-                    style={{ padding: '4px 8px', fontSize: 12, textDecoration: 'none' }}
-                    download
-                  >
-                    下载
-                  </a>
-                  {!readonly && (
+                {!readonly && (
+                  <td style={{ textAlign: 'right' }}>
+                    <a
+                      href={`/api/skills/${skillId}/assets/${encodeURIComponent(a.name)}`}
+                      className="btn btn-default"
+                      style={{ padding: '4px 8px', fontSize: 12, textDecoration: 'none' }}
+                      download
+                    >
+                      下载
+                    </a>
                     <button
                       className="btn btn-danger"
                       style={{ padding: '4px 8px', fontSize: 12, marginLeft: 4 }}
@@ -122,8 +122,8 @@ export default function AssetManager({ skillId, readonly }) {
                     >
                       删除
                     </button>
-                  )}
-                </td>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

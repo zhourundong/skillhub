@@ -1,25 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { skillsApi, channelsApi } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import SkillForm from '../components/SkillForm';
 import AssetManager from '../components/AssetManager';
 import TextFileManager from '../components/TextFileManager';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SkillPreview from '../components/SkillPreview';
 import CustomDirManager from '../components/CustomDirManager';
+import './SkillDetail.css';
 
-const STATUS_MAP = { draft: '草稿', published: '已发布', unpublished: '已下架' };
+const STATUS_MAP = {
+  draft: '草稿',
+  published: '已发布',
+  unpublished: '已下架'
+};
 
 function formatDateTime(isoString) {
   if (!isoString) return '-';
   const d = new Date(isoString);
-  const pad = n => n.toString().padStart(2, '0');
+  const pad = (n) => n.toString().padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export default function SkillDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isAdmin, isOwner, isAuthenticated } = useAuth();
   const [skill, setSkill] = useState(null);
   const [records, setRecords] = useState([]);
   const [channels, setChannels] = useState([]);
@@ -32,26 +39,47 @@ export default function SkillDetail() {
   const [editingForm, setEditingForm] = useState(null);
 
   const load = async () => {
-    const [s, r, c] = await Promise.all([
-      skillsApi.get(id),
-      skillsApi.records(id),
-      channelsApi.list(),
-    ]);
-    setSkill(s.data);
-    setRecords(r.data);
-    setChannels(c.data);
-    // 默认选中默认渠道
-    const defaultChannel = c.data.find(ch => ch.isDefault && ch.enabled);
-    if (defaultChannel) {
-      setSelectedChannel(defaultChannel.id);
+    try {
+      const s = await skillsApi.get(id);
+      setSkill(s.data);
+
+      try {
+        const r = await skillsApi.records(id);
+        setRecords(r.data);
+      } catch (err) {
+        console.log('Could not load records:', err.message);
+      }
+
+      if (isAdmin) {
+        try {
+          const c = await channelsApi.list();
+          setChannels(c.data);
+          const defaultChannel = c.data.find((ch) => ch.isDefault && ch.enabled);
+          if (defaultChannel) {
+            setSelectedChannel(defaultChannel.id);
+          }
+        } catch (err) {
+          console.log('Could not load channels:', err.message);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load skill:', err.message);
     }
   };
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => {
+    load();
+  }, [id]);
 
-  if (!skill) return <div className="empty"><p>加载中...</p></div>;
+  if (!skill) {
+    return <div className="empty"><p>加载中...</p></div>;
+  }
 
-  const isReadonly = skill.status === 'published';
+  const canEdit = isAuthenticated && (isOwner(skill.created_by) || isAdmin) && skill.status !== 'published';
+  const canDelete = isAuthenticated && (isOwner(skill.created_by) || isAdmin) && skill.status !== 'published';
+  const canPublish = isAdmin;
+  const isReadonly = !canEdit;
+  const isAnonymousReadonly = !isAuthenticated;
 
   const handleUpdate = async (data) => {
     try {
@@ -73,7 +101,7 @@ export default function SkillDetail() {
       await skillsApi.publish(id, selectedChannel || undefined);
       load();
       setConfirm({
-        message: '发布成功！',
+        message: '发布成功',
         onConfirm: () => setConfirm(null),
         type: 'success'
       });
@@ -90,7 +118,7 @@ export default function SkillDetail() {
 
   const handleUnpublish = () => {
     setConfirm({
-      message: '确认下架此 Skill？',
+      message: '确认下架这个 Skill 吗？',
       onConfirm: async () => {
         setConfirm(null);
         setUnpublishing(true);
@@ -98,7 +126,7 @@ export default function SkillDetail() {
           await skillsApi.unpublish(id);
           load();
           setConfirm({
-            message: '下架成功！',
+            message: '下架成功',
             onConfirm: () => setConfirm(null),
             type: 'success'
           });
@@ -116,7 +144,7 @@ export default function SkillDetail() {
 
   const handleDelete = () => {
     setConfirm({
-      message: '确认删除此 Skill？此操作不可恢复。',
+      message: '确认删除这个 Skill 吗？此操作不可恢复。',
       onConfirm: async () => {
         await skillsApi.delete(id);
         navigate('/');
@@ -125,10 +153,10 @@ export default function SkillDetail() {
   };
 
   return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <button className="btn btn-default" onClick={() => navigate('/')}>← 返回列表</button>
-        <div style={{ display: 'flex', gap: 8 }}>
+    <div className="skill-detail-page">
+      <div className="skill-detail-toolbar">
+        <button className="btn btn-default" onClick={() => navigate('/')}>返回列表</button>
+        <div className="skill-detail-toolbar-actions">
           <a
             href={`/api/skills/${id}/download`}
             className="btn btn-default"
@@ -141,102 +169,127 @@ export default function SkillDetail() {
       </div>
 
       {editing ? (
-        <div className="card">
-          <h2 style={{ marginBottom: 16 }}>编辑 Skill</h2>
+        <div className="card skill-detail-edit-card skill-detail-edit-mode">
+          <h2 style={{ marginBottom: 24, fontSize: 20 }}>编辑 Skill</h2>
           <SkillForm skill={skill} onSubmit={handleUpdate} onCancel={() => setEditing(false)} onChange={setEditingForm} />
         </div>
       ) : (
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-            <div>
-              <h2 style={{ fontSize: 20 }}>{skill.name}</h2>
-              <p style={{ color: '#666', marginTop: 4 }}>
-                v{skill.version}
-                {skill.category && (
-                  <span style={{
-                    display: 'inline-block',
-                    marginLeft: 8,
-                    padding: '2px 8px',
-                    background: '#e8f4ff',
-                    color: '#1890ff',
-                    borderRadius: 4,
-                    fontSize: 12
-                  }}>
-                    {skill.category}
-                  </span>
-                )}
-              </p>
-            </div>
-            <span className={`status-badge status-${skill.status}`}>{STATUS_MAP[skill.status] || skill.status}</span>
-          </div>
-
-          <p style={{ lineHeight: 1.6, marginBottom: 16 }}>{skill.description || '暂无描述'}</p>
-
-          {skill.skill_content && (
-            <div style={{ background: '#f8f9fa', borderRadius: 6, padding: 16, marginBottom: 16, maxHeight: 400, overflow: 'auto' }}>
-              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.5, margin: 0 }}>{skill.skill_content}</pre>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {!isReadonly && (
-              <button className="btn btn-default" onClick={() => setEditing(true)}>编辑</button>
-            )}
-            {!isReadonly && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <select
-                  value={selectedChannel}
-                  onChange={e => setSelectedChannel(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #d9d9d9', fontSize: 14 }}
-                >
-                  {channels.filter(c => c.enabled).map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}{c.isDefault ? '(默认)' : ''}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn btn-success" onClick={handlePublish} disabled={publishing}>
-                  {publishing ? '发布中...' : '发布'}
-                </button>
+        <div className="card skill-overview-card">
+          <div className="skill-overview-layout">
+            <section className="skill-overview-main">
+              <div className="skill-overview-header">
+                <div>
+                  <h2 className="skill-overview-title">{skill.name}</h2>
+                  <p className="skill-overview-meta">
+                    v{skill.version}
+                    {skill.category ? (
+                      <span className="skill-category-chip">{skill.category}</span>
+                    ) : null}
+                  </p>
+                </div>
+                <span className={`status-badge status-${skill.status}`}>{STATUS_MAP[skill.status] || skill.status}</span>
               </div>
-            )}
-            {isReadonly && (
-              <button className="btn btn-danger" onClick={handleUnpublish} disabled={unpublishing}>
-                {unpublishing ? '下架中...' : '下架'}
-              </button>
-            )}
-            {!isReadonly && (
-              <button className="btn btn-danger" onClick={handleDelete}>删除</button>
-            )}
+
+              <div className="skill-description-block">
+                <h4>描述</h4>
+                <p>{skill.description || '暂无描述'}</p>
+              </div>
+
+              <div className="skill-content-block">
+                <h4>SKILL 内容</h4>
+                <pre className="skill-content-pre">
+                  {skill.skill_content || <span className="skill-content-empty">暂无内容</span>}
+                </pre>
+              </div>
+            </section>
+
+            <aside className="skill-overview-side">
+              <div className="skill-side-card">
+                <h4>操作</h4>
+                <div className="skill-action-stack">
+                  {!isReadonly ? (
+                    <button className="btn btn-default" onClick={() => setEditing(true)}>编辑</button>
+                  ) : null}
+
+                  {!isReadonly ? (
+                    <div className="skill-publish-row">
+                      <select
+                        value={selectedChannel}
+                        onChange={(e) => setSelectedChannel(e.target.value)}
+                      >
+                        {channels.filter((c) => c.enabled).map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}{c.isDefault ? '（默认）' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <button className="btn btn-success" onClick={handlePublish} disabled={publishing}>
+                        {publishing ? '发布中...' : '发布'}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {canPublish && skill.status === 'published' ? (
+                    <button className="btn btn-danger" onClick={handleUnpublish} disabled={unpublishing}>
+                      {unpublishing ? '下架中...' : '下架'}
+                    </button>
+                  ) : null}
+
+                  {canDelete ? (
+                    <button className="btn btn-danger" onClick={handleDelete}>删除</button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="skill-side-card skill-side-meta">
+                <h4>信息</h4>
+                <div className="skill-meta-list">
+                  <div>
+                    <span>状态</span>
+                    <strong>{STATUS_MAP[skill.status] || skill.status}</strong>
+                  </div>
+                  <div>
+                    <span>版本</span>
+                    <strong>v{skill.version}</strong>
+                  </div>
+                  <div>
+                    <span>分类</span>
+                    <strong>{skill.category || '-'}</strong>
+                  </div>
+                  <div>
+                    <span>更新时间</span>
+                    <strong>{formatDateTime(skill.updated_at)}</strong>
+                  </div>
+                </div>
+              </div>
+            </aside>
           </div>
         </div>
       )}
 
-      {/* Scripts, References, Assets */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginBottom: 12, fontSize: 16 }}>脚本 (scripts/)</h3>
-        <TextFileManager skillId={id} subdir="scripts" label="脚本" readonly={isReadonly} />
+      <div className="card skill-detail-section">
+        <h3 style={{ marginBottom: 16, fontSize: 18 }}>脚本 (scripts/)</h3>
+        <TextFileManager skillId={id} subdir="scripts" label="脚本" readonly={isReadonly || isAnonymousReadonly} />
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginBottom: 12, fontSize: 16 }}>参考资料 (references/)</h3>
-        <TextFileManager skillId={id} subdir="references" label="参考资料" readonly={isReadonly} />
+      <div className="card skill-detail-section">
+        <h3 style={{ marginBottom: 16, fontSize: 18 }}>参考资料 (references/)</h3>
+        <TextFileManager skillId={id} subdir="references" label="参考资料" readonly={isReadonly || isAnonymousReadonly} />
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginBottom: 12, fontSize: 16 }}>静态资源 (assets/)</h3>
-        <AssetManager skillId={id} readonly={isReadonly} />
+      <div className="card skill-detail-section">
+        <h3 style={{ marginBottom: 16, fontSize: 18 }}>静态资源 (assets/)</h3>
+        <AssetManager skillId={id} readonly={isReadonly || isAnonymousReadonly} />
       </div>
 
-      {/* Custom Directories */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginBottom: 12, fontSize: 16 }}>自定义目录</h3>
-        <CustomDirManager skillId={id} readonly={isReadonly} />
+      <div className="card skill-detail-section">
+        <h3 style={{ marginBottom: 16, fontSize: 18 }}>自定义目录</h3>
+        <CustomDirManager skillId={id} readonly={isReadonly || isAnonymousReadonly} />
       </div>
 
-      {records.length > 0 && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <h3 style={{ marginBottom: 12, fontSize: 16 }}>发布记录</h3>
+      {records.length > 0 ? (
+        <div className="card skill-detail-section">
+          <h3 style={{ marginBottom: 16, fontSize: 18 }}>发布记录</h3>
           <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #eee', textAlign: 'left' }}>
@@ -248,7 +301,7 @@ export default function SkillDetail() {
               </tr>
             </thead>
             <tbody>
-              {records.map(r => (
+              {records.map((r) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
                   <td style={{ padding: '8px 0' }}>{r.channel_name}</td>
                   <td>{r.channel_type}</td>
@@ -260,42 +313,37 @@ export default function SkillDetail() {
             </tbody>
           </table>
         </div>
-      )}
+      ) : null}
 
-      {confirm && (
+      {confirm ? (
         <ConfirmDialog
           message={confirm.message}
           onConfirm={confirm.onConfirm}
           onCancel={() => setConfirm(null)}
           type={confirm.type}
         />
-      )}
+      ) : null}
 
-      {/* Loading Overlay */}
-      {(publishing || unpublishing) && (
+      {(publishing || unpublishing) ? (
         <div className="modal-overlay">
-          <div style={{
-            background: '#fff',
-            padding: '24px 32px',
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12
-          }}>
-            <div className="spinner" style={{
-              width: 20,
-              height: 20,
-              border: '2px solid #e8e8e8',
-              borderTopColor: '#1890ff',
-              borderRadius: '50%',
-              animation: 'spin 0.8s linear infinite'
-            }} />
+          <div className="skill-loading-box">
+            <div
+              className="spinner"
+              style={{
+                width: 20,
+                height: 20,
+                border: '2px solid #e8e8e8',
+                borderTopColor: '#1890ff',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite'
+              }}
+            />
             <span>{publishing ? '正在发布...' : '正在下架...'}</span>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {showPreview && (
+      {showPreview ? (
         <SkillPreview
           skillId={id}
           onClose={() => setShowPreview(false)}
@@ -305,7 +353,7 @@ description: ${editingForm.description || ''}
 ---
 ${editingForm.skill_content || ''}` : undefined}
         />
-      )}
+      ) : null}
     </div>
   );
 }

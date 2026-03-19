@@ -253,24 +253,27 @@ export default function TextFileManager({ skillId, subdir, label, readonly }) {
           <thead>
             <tr style={{ borderBottom: '1px solid #eee', textAlign: 'left' }}>
               <th style={{ padding: '8px 0' }}>文件名</th>
-              <th>更新时间</th>
-              <th style={{ width: readonly ? 80 : 120 }}></th>
+              {!readonly && <th style={{ width: 80 }}></th>}
             </tr>
           </thead>
           <tbody>
             {files.map(f => (
               <tr key={f.name} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                <td style={{ padding: '8px 0' }}>{f.name}</td>
-                <td>{formatDateTime(f.updated_at)}</td>
-                <td style={{ textAlign: 'right' }}>
-                  <button
-                    className="btn btn-default"
-                    style={{ padding: '4px 8px', fontSize: 12, marginRight: readonly ? 0 : 4 }}
-                    onClick={() => handleView(f)}
-                  >
-                    {readonly ? '查看' : '编辑'}
-                  </button>
-                  {!readonly && (
+                <td style={{ padding: '8px 0' }}>
+                  {!readonly ? (
+                    <a
+                      href="#"
+                      onClick={e => { e.preventDefault(); handleView(f); }}
+                      style={{ color: '#667eea', textDecoration: 'none' }}
+                    >
+                      {f.name}
+                    </a>
+                  ) : (
+                    f.name
+                  )}
+                </td>
+                {!readonly && (
+                  <td style={{ textAlign: 'right' }}>
                     <button
                       className="btn btn-danger"
                       style={{ padding: '4px 8px', fontSize: 12 }}
@@ -278,8 +281,8 @@ export default function TextFileManager({ skillId, subdir, label, readonly }) {
                     >
                       删除
                     </button>
-                  )}
-                </td>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

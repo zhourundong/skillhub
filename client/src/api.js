@@ -1,6 +1,48 @@
 import axios from 'axios';
+import { clearAuthSession, getStoredToken } from './utils/authStorage';
 
 const api = axios.create({ baseURL: '/api' });
+
+// Request interceptor - add auth token
+api.interceptors.request.use((config) => {
+  const token = getStoredToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Response interceptor - handle 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      clearAuthSession();
+      // Only redirect to login if user was trying to access protected routes
+      // Public routes like viewing skills should not redirect
+      const protectedPaths = ['/channels', '/users'];
+      const isProtectedRoute = protectedPaths.some(p => window.location.pathname.startsWith(p));
+      if (isProtectedRoute) {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const authApi = {
+  login: (username, password) => api.post('/auth/login', { username, password }).then(r => r.data),
+  me: () => api.get('/auth/me').then(r => r.data),
+  changePassword: (oldPassword, newPassword) => api.put('/auth/password', { oldPassword, newPassword }).then(r => r.data),
+};
+
+export const usersApi = {
+  list: (params) => api.get('/users', { params }).then(r => r.data),
+  create: (data) => api.post('/users', data).then(r => r.data),
+  update: (id, data) => api.put(`/users/${id}`, data).then(r => r.data),
+  delete: (id) => api.delete(`/users/${id}`).then(r => r.data),
+  resetPassword: (id, newPassword) => api.put(`/users/${id}/reset-password`, { newPassword }).then(r => r.data),
+};
 
 export const skillsApi = {
   list: (params) => api.get('/skills', { params }).then(r => r.data),

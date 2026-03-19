@@ -1,0 +1,179 @@
+.skill-form {
+  width: 100%;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-height: 100%;
+}
+
+.skill-form-summary {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.skill-form-summary div {
+  padding: 16px 18px;
+  background: #f6f9ff;
+  border: 1px solid #e8edf5;
+  border-radius: 16px;
+}
+
+.skill-form-summary span {
+  display: block;
+  color: #8a95ad;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.skill-form-summary strong {
+  display: block;
+  margin-top: 8px;
+  color: #24314c;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.skill-form-layout {
+  width: 100%;
+  display: block;
+  min-height: 760px;
+}
+
+.skill-form-main {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100%;
+}
+
+.skill-form-section {
+  width: 100%;
+  background: #fafcff;
+  border: 1px solid #e8edf5;
+  border-radius: 18px;
+  padding: 24px 26px;
+}
+
+.skill-form-section-head {
+  margin-bottom: 16px;
+}
+
+.skill-form-section-head h3 {
+  margin: 0;
+  color: #24314c;
+  font-size: 18px;
+}
+
+.skill-form-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.skill-form-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.skill-form-label-row label {
+  margin-bottom: 0;
+}
+
+.skill-form-label-row span,
+.skill-form-hint {
+  color: #8a95ad;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.skill-form-hint {
+  margin-top: 6px;
+}
+
+.required {
+  color: #ff4d4f;
+}
+
+.skill-form-editor-section {
+  min-height: 500px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.skill-form-editor-group {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.skill-form-editor {
+  height: 480px;
+  min-height: 480px;
+  max-height: 720px;
+  resize: vertical;
+  overflow: auto;
+  box-sizing: border-box;
+  font-family: Consolas, Monaco, monospace;
+  line-height: 1.7;
+}
+
+.skill-form-editor-meta {
+  margin-top: 8px;
+  margin-bottom: 0;
+  justify-content: flex-end;
+}
+
+.skill-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+@media (max-width: 720px) {
+  .skill-form-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .skill-form-layout {
+    min-height: 0;
+  }
+
+  .skill-form-section {
+    border-radius: 14px;
+    padding: 18px;
+  }
+
+  .skill-form-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .skill-form-editor-section {
+    min-height: 0;
+  }
+
+  .skill-form-editor {
+    height: 360px;
+    min-height: 360px;
+    max-height: 520px;
+  }
+
+  .skill-form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .skill-form-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

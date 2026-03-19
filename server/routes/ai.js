@@ -1,12 +1,13 @@
 const express = require('express');
 const aiService = require('../services/aiService');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
 const MAX_PROMPT_LENGTH = 5000;
 
-// POST /generate — AI skill generation with SSE
-router.post('/generate', async (req, res) => {
+// POST /generate — AI skill generation with SSE (requires authentication)
+router.post('/generate', authenticateToken, async (req, res) => {
   const { prompt, language, fileOptions } = req.body;
 
   // Validate prompt

@@ -1,8 +1,13 @@
 const express = require('express');
 const db = require('../db');
 const { getRegisteredTypes, createChannel } = require('../channels');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
+
+// All channel routes require authentication and admin role
+router.use(authenticateToken);
+router.use(requireAdmin);
 
 // 获取所有渠道
 router.get('/', async (req, res) => {

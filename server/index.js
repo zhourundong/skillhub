@@ -28,6 +28,8 @@ app.use(express.json());
 app.use('/assets', express.static(skillsDir));
 
 // API 路由
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/users', require('./routes/users'));
 app.use('/api/skills', require('./routes/skills'));
 app.use('/api/skills', require('./routes/publish'));
 app.use('/api/channels', require('./routes/channels'));

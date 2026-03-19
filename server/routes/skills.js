@@ -6,12 +6,14 @@ const archiver = require('archiver');
 const AdmZip = require('adm-zip');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
+const { authenticateToken, requireOwnerOrAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
 // File size limits from environment (in MB, default: 2MB for files, 10MB for zip)
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '2', 10) * 1024 * 1024;
 const MAX_ZIP_SIZE = parseInt(process.env.MAX_ZIP_SIZE || '10', 10) * 1024 * 1024;
+const MAX_SKILL_DESCRIPTION_LENGTH = 500;
 
 // Configure multer for file uploads (single file)
 const storage = multer.memoryStorage();
@@ -57,7 +59,7 @@ router.get('/', async (req, res) => {
 });
 
 // 导入 ZIP 创建 Skill
-router.post('/import-zip', uploadZip.single('file'), async (req, res) => {
+router.post('/import-zip', authenticateToken, uploadZip.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: '请选择 ZIP 文件' });
 
   try {
@@ -103,7 +105,8 @@ router.post('/import-zip', uploadZip.single('file'), async (req, res) => {
       name: frontmatter.name,
       description: frontmatter.description || '',
       category: frontmatter.category || '',
-      skill_content: body
+      skill_content: body,
+      createdBy: req.user.id
     });
 
     const skillId = skill.id;
@@ -245,9 +248,12 @@ router.get('/:id/raw', async (req, res) => {
 });
 
 // 创建 skill
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { name, description, version, category, skill_content, scripts, references, assets } = req.body;
+    if ((description || '').length > MAX_SKILL_DESCRIPTION_LENGTH) {
+      return res.status(400).json({ error: `描述不能超过 ${MAX_SKILL_DESCRIPTION_LENGTH} 个字` });
+    }
 
     if (!name) return res.status(400).json({ error: '名称不能为空' });
 
@@ -267,7 +273,8 @@ router.post('/', async (req, res) => {
       description: description || '',
       version: version || '1.0.0',
       category: category || '',
-      skill_content: skill_content || ''
+      skill_content: skill_content || '',
+      createdBy: req.user.id
     });
 
     // 保存辅助文件
@@ -313,12 +320,18 @@ router.post('/', async (req, res) => {
 });
 
 // 更新 skill
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
 
     const { name, description, version, category, skill_content } = req.body;
+    if (description !== undefined && (description || '').length > MAX_SKILL_DESCRIPTION_LENGTH) {
+      return res.status(400).json({ error: `描述不能超过 ${MAX_SKILL_DESCRIPTION_LENGTH} 个字` });
+    }
 
     // 验证名称格式
     if (name !== undefined && name !== skill.name) {
@@ -340,7 +353,8 @@ router.put('/:id', async (req, res) => {
       description,
       version,
       category,
-      skill_content
+      skill_content,
+      updatedBy: req.user.id
     });
 
     res.json({ data: updated });
@@ -350,7 +364,10 @@ router.put('/:id', async (req, res) => {
 });
 
 // 删除 skill
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -434,7 +451,10 @@ router.get('/:id/assets', async (req, res) => {
 });
 
 // 上传 asset
-router.post('/:id/assets', upload.single('file'), async (req, res) => {
+router.post('/:id/assets', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), upload.single('file'), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -450,7 +470,10 @@ router.post('/:id/assets', upload.single('file'), async (req, res) => {
 });
 
 // 删除 asset
-router.delete('/:id/assets/:filename', async (req, res) => {
+router.delete('/:id/assets/:filename', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -506,7 +529,10 @@ router.get('/:id/scripts/:filename', async (req, res) => {
 });
 
 // 创建/更新 script
-router.put('/:id/scripts/:filename', async (req, res) => {
+router.put('/:id/scripts/:filename', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -522,7 +548,10 @@ router.put('/:id/scripts/:filename', async (req, res) => {
 });
 
 // 删除 script
-router.delete('/:id/scripts/:filename', async (req, res) => {
+router.delete('/:id/scripts/:filename', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -562,7 +591,10 @@ router.get('/:id/references/:filename', async (req, res) => {
 });
 
 // 创建/更新 reference
-router.put('/:id/references/:filename', async (req, res) => {
+router.put('/:id/references/:filename', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -578,7 +610,10 @@ router.put('/:id/references/:filename', async (req, res) => {
 });
 
 // 删除 reference
-router.delete('/:id/references/:filename', async (req, res) => {
+router.delete('/:id/references/:filename', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -606,7 +641,10 @@ router.get('/:id/custom-dirs', async (req, res) => {
 });
 
 // 创建自定义目录
-router.post('/:id/custom-dirs', async (req, res) => {
+router.post('/:id/custom-dirs', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -619,7 +657,10 @@ router.post('/:id/custom-dirs', async (req, res) => {
 });
 
 // 重命名自定义目录
-router.put('/:id/custom-dirs/:dirId', async (req, res) => {
+router.put('/:id/custom-dirs/:dirId', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -633,7 +674,10 @@ router.put('/:id/custom-dirs/:dirId', async (req, res) => {
 });
 
 // 删除自定义目录
-router.delete('/:id/custom-dirs/:dirId', async (req, res) => {
+router.delete('/:id/custom-dirs/:dirId', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -704,7 +748,10 @@ router.get('/:id/custom-files/:filePath(*)', async (req, res) => {
 });
 
 // 创建/更新自定义目录中的文件
-router.put('/:id/custom-files/:filePath(*)', async (req, res) => {
+router.put('/:id/custom-files/:filePath(*)', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -720,7 +767,10 @@ router.put('/:id/custom-files/:filePath(*)', async (req, res) => {
 });
 
 // 删除自定义目录中的文件
-router.delete('/:id/custom-files/:filePath(*)', async (req, res) => {
+router.delete('/:id/custom-files/:filePath(*)', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
@@ -734,7 +784,10 @@ router.delete('/:id/custom-files/:filePath(*)', async (req, res) => {
 });
 
 // 上传文件到自定义目录
-router.post('/:id/custom-dirs/:dirPath(*)/upload', upload.single('file'), async (req, res) => {
+router.post('/:id/custom-dirs/:dirPath(*)/upload', authenticateToken, requireOwnerOrAdmin(async (req) => {
+  const skill = await db.getSkill(req.params.id);
+  return skill?.created_by;
+}), upload.single('file'), async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.id);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });

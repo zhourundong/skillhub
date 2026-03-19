@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 
 // Table names with prefix
 const TABLES = {
+  users: 't_sh_users',
   skills: 't_sh_skills',
   channels: 't_sh_channels',
   publish_records: 't_sh_publish_records',
@@ -150,6 +151,129 @@ const db = {
     }
   },
 
+  // ========== Users ==========
+  async getUserById(id) {
+    const pool = getPool();
+    const [rows] = await pool.execute(
+      `SELECT id, username, display_name, role, created_at, updated_at FROM ${TABLES.users} WHERE id = ?`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  async getUserByUsername(username) {
+    const pool = getPool();
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.users} WHERE username = ?`,
+      [username]
+    );
+    return rows[0] || null;
+  },
+
+  async listUsers({ page = 1, pageSize = 20, keyword } = {}) {
+    const pool = getPool();
+    let sql = `SELECT id, username, display_name, role, created_at, updated_at FROM ${TABLES.users}`;
+    const params = [];
+
+    if (keyword) {
+      sql += ' WHERE (username LIKE ? OR display_name LIKE ?)';
+      const kw = `%${keyword}%`;
+      params.push(kw, kw);
+    }
+
+    // Count total
+    const countSql = sql.replace('SELECT id, username, display_name, role, created_at, updated_at', 'SELECT COUNT(*) as total');
+    const [countRows] = await pool.execute(countSql, params);
+    const total = countRows[0].total;
+    const totalPages = Math.ceil(total / pageSize);
+
+    // Get paginated results
+    const limit = parseInt(pageSize, 10) || 20;
+    const offset = (parseInt(page, 10) - 1) * limit;
+    sql += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+
+    const [rows] = await pool.execute(sql, params);
+
+    return {
+      data: rows,
+      pagination: { page, pageSize, total, totalPages }
+    };
+  },
+
+  async createUser(data) {
+    const pool = getPool();
+    const id = uuidv4();
+    const now = new Date();
+
+    await pool.execute(
+      `INSERT INTO ${TABLES.users} (id, username, password_hash, display_name, role, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        data.username,
+        data.passwordHash,
+        data.displayName || data.username,
+        data.role || 'user',
+        now,
+        now
+      ]
+    );
+
+    return this.getUserById(id);
+  },
+
+  async updateUser(id, data) {
+    const pool = getPool();
+    const updates = [];
+    const params = [];
+
+    if (data.displayName !== undefined) {
+      updates.push('display_name = ?');
+      params.push(data.displayName);
+    }
+    if (data.role !== undefined) {
+      updates.push('role = ?');
+      params.push(data.role);
+    }
+    if (data.passwordHash !== undefined) {
+      updates.push('password_hash = ?');
+      params.push(data.passwordHash);
+    }
+
+    if (updates.length === 0) {
+      return this.getUserById(id);
+    }
+
+    params.push(id);
+    await pool.execute(
+      `UPDATE ${TABLES.users} SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    return this.getUserById(id);
+  },
+
+  async deleteUser(id) {
+    const pool = getPool();
+    const [result] = await pool.execute(
+      `DELETE FROM ${TABLES.users} WHERE id = ?`,
+      [id]
+    );
+    return result.affectedRows > 0;
+  },
+
+  async countUsers() {
+    const pool = getPool();
+    const [rows] = await pool.execute(`SELECT COUNT(*) as count FROM ${TABLES.users}`);
+    return rows[0].count;
+  },
+
+  async countAdminUsers() {
+    const pool = getPool();
+    const [rows] = await pool.execute(`SELECT COUNT(*) as count FROM ${TABLES.users} WHERE role = 'admin'`);
+    return rows[0].count;
+  },
+
   // ========== Skills ==========
   async listSkills({ status, category, keyword, page = 1, pageSize = 10 }) {
     const pool = getPool();
@@ -245,8 +369,8 @@ const db = {
 
     // Insert into database
     await pool.execute(
-      `INSERT INTO ${TABLES.skills} (id, name, description, skill_content, version, category, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ${TABLES.skills} (id, name, description, skill_content, version, category, status, created_by, updated_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         data.name || '',
@@ -255,6 +379,8 @@ const db = {
         data.version || '1.0.0',
         data.category || '',
         'draft',
+        data.createdBy || null,
+        data.updatedBy || data.createdBy || null,
         now,
         now
       ]
@@ -300,6 +426,10 @@ const db = {
     if (data.status !== undefined) {
       updates.push('status = ?');
       params.push(data.status);
+    }
+    if (data.updatedBy !== undefined) {
+      updates.push('updated_by = ?');
+      params.push(data.updatedBy);
     }
 
     if (updates.length > 0) {

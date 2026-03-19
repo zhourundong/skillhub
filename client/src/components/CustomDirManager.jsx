@@ -513,7 +513,7 @@ export default function CustomDirManager({ skillId, readonly }) {
                   <th style={{ padding: '8px 0' }}>文件路径</th>
                   <th>大小</th>
                   <th>更新时间</th>
-                  <th style={{ width: 150 }}></th>
+                  {!readonly && <th style={{ width: 150 }}></th>}
                 </tr>
               </thead>
               <tbody>
@@ -522,25 +522,25 @@ export default function CustomDirManager({ skillId, readonly }) {
                     <td style={{ padding: '8px 0' }}>{f.path}</td>
                     <td>{formatSize(f.size)}</td>
                     <td>{formatDateTime(f.updated_at)}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      {f.isEditable && (
-                        <button
+                    {!readonly && (
+                      <td style={{ textAlign: 'right' }}>
+                        {f.isEditable && (
+                          <button
+                            className="btn btn-default"
+                            style={{ padding: '4px 8px', fontSize: 12, marginRight: 4 }}
+                            onClick={() => handleEditFile(f)}
+                          >
+                            编辑
+                          </button>
+                        )}
+                        <a
+                          href={`/api/skills/${skillId}/custom-files/${encodeURIComponent(f.path)}?download=1`}
                           className="btn btn-default"
-                          style={{ padding: '4px 8px', fontSize: 12, marginRight: 4 }}
-                          onClick={() => handleEditFile(f)}
+                          style={{ padding: '4px 8px', fontSize: 12, marginRight: 4, textDecoration: 'none' }}
+                          download
                         >
-                          {readonly ? '查看' : '编辑'}
-                        </button>
-                      )}
-                      <a
-                        href={`/api/skills/${skillId}/custom-files/${encodeURIComponent(f.path)}?download=1`}
-                        className="btn btn-default"
-                        style={{ padding: '4px 8px', fontSize: 12, marginRight: 4, textDecoration: 'none' }}
-                        download
-                      >
-                        下载
-                      </a>
-                      {!readonly && (
+                          下载
+                        </a>
                         <button
                           className="btn btn-danger"
                           style={{ padding: '4px 8px', fontSize: 12 }}
@@ -548,8 +548,8 @@ export default function CustomDirManager({ skillId, readonly }) {
                         >
                           删除
                         </button>
-                      )}
-                    </td>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

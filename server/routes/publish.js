@@ -1,8 +1,13 @@
 const express = require('express');
 const db = require('../db');
 const { createChannel } = require('../channels');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
+
+// All publish routes require authentication and admin role
+router.use(authenticateToken);
+router.use(requireAdmin);
 
 // 发布 skill 到指定渠道（默认使用默认渠道）
 router.post('/:skillId/publish', async (req, res) => {
