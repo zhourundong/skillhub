@@ -5,7 +5,8 @@ import ConfirmDialog from '../components/ConfirmDialog';
 const DEFAULT_CONFIGS = {
   local: '{\n  "outputDir": "./published_skills"\n}',
   remote: '{\n  "url": "https://example.com/api/skills/publish",\n  "unpublishUrl": "https://example.com/api/skills/unpublish",\n  "healthCheckUrl": "https://example.com/api/health",\n  "headers": {},\n  "timeout": 60000\n}',
-  github: '{\n  "owner": "",\n  "repo": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}'
+  github: '{\n  "owner": "",\n  "repo": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}',
+  ssh: '{\n  "host": "",\n  "port": 22,\n  "username": "",\n  "password": "",\n  "privateKey": "",\n  "passphrase": "",\n  "basePath": "skills"\n}'
 };
 
 // GitHub 配置表单组件
@@ -80,6 +81,98 @@ function GitHubConfigForm({ config, onChange }) {
   );
 }
 
+// SSH 配置表单组件
+function SSHConfigForm({ config, onChange, onTest, testing }) {
+  const handleChange = (field, value) => {
+    const newConfig = { ...config, [field]: value };
+    onChange(newConfig);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div className="form-group" style={{ marginBottom: 0, flex: 2 }}>
+          <label>主机地址</label>
+          <input
+            placeholder="如: 192.168.1.100 或 example.com"
+            value={config.host || ''}
+            onChange={e => handleChange('host', e.target.value)}
+          />
+        </div>
+        <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+          <label>端口</label>
+          <input
+            type="number"
+            placeholder="22"
+            value={config.port || 22}
+            onChange={e => handleChange('port', parseInt(e.target.value) || 22)}
+          />
+        </div>
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label>用户名</label>
+        <input
+          placeholder="SSH 登录用户名"
+          value={config.username || ''}
+          onChange={e => handleChange('username', e.target.value)}
+        />
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label>密码认证</label>
+        <input
+          type="password"
+          placeholder="SSH 密码（使用私钥认证可留空）"
+          value={config.password || ''}
+          onChange={e => handleChange('password', e.target.value)}
+        />
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label>私钥认证</label>
+        <textarea
+          placeholder="私钥内容或私钥文件路径（如 /home/user/.ssh/id_rsa）"
+          value={config.privateKey || ''}
+          onChange={e => handleChange('privateKey', e.target.value)}
+          rows={3}
+          style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 12 }}
+        />
+        <p style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+          支持直接粘贴私钥内容或填写私钥文件路径
+        </p>
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label>私钥密码</label>
+        <input
+          type="password"
+          placeholder="私钥的密码短语（如有）"
+          value={config.passphrase || ''}
+          onChange={e => handleChange('passphrase', e.target.value)}
+        />
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label>目标路径</label>
+        <input
+          placeholder="如: /home/user/skills 或 skills"
+          value={config.basePath || ''}
+          onChange={e => handleChange('basePath', e.target.value)}
+        />
+        <p style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+          服务器上存放技能的目录路径
+        </p>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+        <button
+          type="button"
+          className="btn btn-default"
+          onClick={onTest}
+          disabled={testing || !config.host || !config.username || (!config.password && !config.privateKey)}
+        >
+          {testing ? '测试中...' : '测试连接'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Channels() {
   const [channels, setChannels] = useState([]);
   const [types, setTypes] = useState([]);
@@ -88,6 +181,8 @@ export default function Channels() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: '', type: 'local', config: DEFAULT_CONFIGS.local });
   const [gitHubConfig, setGitHubConfig] = useState({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
+  const [sshConfig, setSshConfig] = useState({ host: '', port: 22, username: '', password: '', privateKey: '', passphrase: '', basePath: '' });
+  const [testing, setTesting] = useState(false);
   const [confirm, setConfirm] = useState(null);
 
   const showError = (message) => {
@@ -130,6 +225,8 @@ export default function Channels() {
       let config;
       if (form.type === 'github') {
         config = gitHubConfig;
+      } else if (form.type === 'ssh') {
+        config = sshConfig;
       } else {
         config = JSON.parse(form.config);
       }
@@ -137,6 +234,7 @@ export default function Channels() {
       setShowForm(false);
       setForm({ name: '', type: 'local', config: DEFAULT_CONFIGS.local });
       setGitHubConfig({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
+      setSshConfig({ host: '', port: 22, username: '', password: '', privateKey: '', passphrase: '', basePath: '' });
       load();
     } catch (err) {
       showError('创建失败: ' + (err.response?.data?.error || err.message));
@@ -156,8 +254,18 @@ export default function Channels() {
         repo: ch.config.repo || '',
         branch: ch.config.branch || 'main',
         token: ch.config.token || '',
-        basePath: ch.config.basePath ?? '',  // 保留空值，不使用默认值
+        basePath: ch.config.basePath ?? '',
         repoUrl: ch.config.repoUrl || ''
+      });
+    } else if (ch.type === 'ssh') {
+      setSshConfig({
+        host: ch.config.host || '',
+        port: ch.config.port || 22,
+        username: ch.config.username || '',
+        password: ch.config.password || '',
+        privateKey: ch.config.privateKey || '',
+        passphrase: ch.config.passphrase || '',
+        basePath: ch.config.basePath ?? ''
       });
     }
   };
@@ -168,6 +276,8 @@ export default function Channels() {
       let config;
       if (form.type === 'github') {
         config = gitHubConfig;
+      } else if (form.type === 'ssh') {
+        config = sshConfig;
       } else {
         config = JSON.parse(form.config);
       }
@@ -178,6 +288,7 @@ export default function Channels() {
       setEditingId(null);
       setForm({ name: '', type: 'local', config: DEFAULT_CONFIGS.local });
       setGitHubConfig({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
+      setSshConfig({ host: '', port: 22, username: '', password: '', privateKey: '', passphrase: '', basePath: '' });
       load();
     } catch (err) {
       showError('更新失败: ' + (err.response?.data?.error || err.message));
@@ -193,6 +304,8 @@ export default function Channels() {
       // 根据渠道类型显示不同的成功信息
       if (ch?.type === 'github') {
         showSuccess(`连接成功！仓库: ${data.repo || ch.config.owner + '/' + ch.config.repo}，分支: ${data.branch || ch.config.branch}`);
+      } else if (ch?.type === 'ssh') {
+        showSuccess(`连接成功！主机: ${data.host || ch.config.host}:${data.port || ch.config.port}，用户: ${data.username || ch.config.username}`);
       } else if (ch?.type === 'local') {
         showSuccess(`连接成功！输出目录: ${data.outputDir || ch.config.outputDir}`);
       } else {
@@ -200,6 +313,19 @@ export default function Channels() {
       }
     } catch (err) {
       showError('连接失败: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleTestSshConfig = async () => {
+    setTesting(true);
+    try {
+      const res = await channelsApi.testConfig('ssh', sshConfig);
+      const data = res.data || {};
+      showSuccess(`连接成功！主机: ${data.host || sshConfig.host}:${data.port || sshConfig.port}`);
+    } catch (err) {
+      showError('连接失败: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -245,6 +371,8 @@ export default function Channels() {
     });
     if (type === 'github') {
       setGitHubConfig({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
+    } else if (type === 'ssh') {
+      setSshConfig({ host: '', port: 22, username: '', password: '', privateKey: '', passphrase: '', basePath: '' });
     }
   };
 
@@ -252,17 +380,19 @@ export default function Channels() {
     setShowForm(false);
     setForm({ name: '', type: 'local', config: DEFAULT_CONFIGS.local });
     setGitHubConfig({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
+    setSshConfig({ host: '', port: 22, username: '', password: '', privateKey: '', passphrase: '', basePath: '' });
   };
 
   const handleEditClose = () => {
     setEditingId(null);
     setForm({ name: '', type: 'local', config: DEFAULT_CONFIGS.local });
     setGitHubConfig({ owner: '', repo: '', branch: 'main', token: '', basePath: 'skills', repoUrl: '' });
+    setSshConfig({ host: '', port: 22, username: '', password: '', privateKey: '', passphrase: '', basePath: '' });
   };
 
   // 过滤敏感配置字段用于显示
   const getDisplayConfig = (config, type) => {
-    const sensitiveFields = ['token', 'password', 'secret', 'apiKey', 'api_key'];
+    const sensitiveFields = ['token', 'password', 'secret', 'apiKey', 'api_key', 'privateKey', 'passphrase'];
     const display = { ...config };
     for (const field of sensitiveFields) {
       if (display[field]) {
@@ -331,7 +461,7 @@ export default function Channels() {
 
       {showForm && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()} style={form.type === 'github' ? { maxWidth: 600 } : {}}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={(form.type === 'github' || form.type === 'ssh') ? { maxWidth: 600 } : {}}>
             <h2>添加发布渠道</h2>
             <form onSubmit={handleCreate}>
               <div className="form-group">
@@ -346,6 +476,8 @@ export default function Channels() {
               </div>
               {form.type === 'github' ? (
                 <GitHubConfigForm config={gitHubConfig} onChange={setGitHubConfig} />
+              ) : form.type === 'ssh' ? (
+                <SSHConfigForm config={sshConfig} onChange={setSshConfig} onTest={handleTestSshConfig} testing={testing} />
               ) : (
                 <div className="form-group">
                   <label>配置 (JSON)</label>
@@ -363,7 +495,7 @@ export default function Channels() {
 
       {editingId && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()} style={form.type === 'github' ? { maxWidth: 600 } : {}}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={(form.type === 'github' || form.type === 'ssh') ? { maxWidth: 600 } : {}}>
             <h2>编辑发布渠道</h2>
             <form onSubmit={handleUpdate}>
               <div className="form-group">
@@ -376,6 +508,8 @@ export default function Channels() {
               </div>
               {form.type === 'github' ? (
                 <GitHubConfigForm config={gitHubConfig} onChange={setGitHubConfig} />
+              ) : form.type === 'ssh' ? (
+                <SSHConfigForm config={sshConfig} onChange={setSshConfig} onTest={handleTestSshConfig} testing={testing} />
               ) : (
                 <div className="form-group">
                   <label>配置 (JSON)</label>

@@ -10,7 +10,7 @@
 - **自定义目录**: 支持创建最多三级自定义目录，管理任意类型文件
 - **文件管理**: 支持脚本(scripts)、参考资料(references)、附件(assets)的管理
 - **AI 生成**: 一句话描述自动生成 Skill 内容和辅助文件
-- **多渠道发布**: 支持本地、远程服务器、GitHub 三种发布渠道
+- **多渠道发布**: 支持本地、远程服务器、GitHub、SSH/SFTP 四种发布渠道
 - **Markdown 预览**: 支持 SKILL.md 文件的源码和渲染预览
 
 ## 目录结构
@@ -24,7 +24,8 @@ skillhub/
 │   ├── channels/          # 发布渠道实现
 │   │   ├── local.js       # 本地发布
 │   │   ├── remote.js      # 远程服务器发布
-│   │   └── github.js      # GitHub 发布
+│   │   ├── github.js      # GitHub 发布
+│   │   └── ssh.js         # SSH/SFTP 发布
 │   ├── db/                # 数据库相关
 │   │   └── init.sql       # MySQL 表结构初始化
 │   ├── skill-creator/     # AI 生成提示词
@@ -177,6 +178,33 @@ ZIP 包名为 `{技能名}@{版本号}.zip`。
 - `token`: GitHub Personal Access Token（需要 repo 权限）
 - `basePath`: 仓库中的目标路径
 - `repoUrl`: 支持直接填写完整 URL，自动解析 owner/repo
+
+发布后的目录名为 `{技能名}@{版本号}`。
+
+### 4. SSH/SFTP 发布
+
+通过 SSH/SFTP 将 Skill 发布到远程服务器。
+
+```json
+{
+  "host": "192.168.1.100",
+  "port": 22,
+  "username": "user",
+  "password": "your-password",
+  "privateKey": "",
+  "passphrase": "",
+  "basePath": "/home/user/skills"
+}
+```
+
+**配置说明**:
+- `host`: SSH 服务器地址（IP 或域名）
+- `port`: SSH 端口（默认 22）
+- `username`: SSH 登录用户名
+- `password`: SSH 密码（与 privateKey 二选一）
+- `privateKey`: 私钥内容或私钥文件路径
+- `passphrase`: 私钥密码短语（如有）
+- `basePath`: 服务器上存放技能的目录路径
 
 发布后的目录名为 `{技能名}@{版本号}`。
 

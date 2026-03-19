@@ -139,6 +139,31 @@ router.post('/:id/test', async (req, res) => {
   }
 });
 
+// 测试渠道配置（无需保存，用于创建前测试）
+router.post('/test-config', async (req, res) => {
+  try {
+    const { type, config } = req.body;
+    if (!type) return res.status(400).json({ error: '渠道类型不能为空' });
+
+    const registered = getRegisteredTypes();
+    if (!registered.includes(type)) {
+      return res.status(400).json({ error: `不支持的渠道类型: ${type}` });
+    }
+
+    const publisher = createChannel(type, config || {});
+    const result = await publisher.healthCheck();
+
+    // 如果健康检查失败，返回错误状态
+    if (!result.healthy) {
+      return res.status(400).json({ error: result.error || '连接失败', data: result });
+    }
+
+    res.json({ data: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 删除渠道
 router.delete('/:id', async (req, res) => {
   try {
