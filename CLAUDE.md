@@ -1,87 +1,37 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件为 Claude Code 提供项目开发指导。
 
-## Commands
+## 常用命令
 
 ```bash
-# Start backend server (port 3030)
-node server/index.js
-
-# Start frontend dev server (port 3000)
-cd client && npm run dev
-
-# Build frontend for production
-cd client && npm run build
-
-# Run tests
-npm test
+node server/index.js       # 启动后端 (3030)
+cd client && npm run dev   # 启动前端 (3000)
 ```
 
-## Architecture Overview
+## 项目架构
 
-### Backend (server/)
-- **Express.js** server on port 3030
-- **File-system storage**: Skills stored as directories in `skills/`
-- Key modules:
-  - `db.js` - Core CRUD operations for skills, assets, scripts, references
-  - `services/aiService.js` - AI skill generation using OpenAI-compatible API
-  - `channels/` - Plugin system for publishing (currently `local` only)
-  - `routes/` - Express routes for skills, publish, channels, AI
+**后端**：Express.js + MySQL。核心：`db.js`、`routes/`、`channels/`、`middleware/auth.js`
 
-### Frontend (client/)
-- **React + Vite** on port 3000
-- Proxies `/api/*` to backend in development
-- Key pages: `SkillList`, `SkillDetail`, `Channels`
+**前端**：React + Vite。页面：SkillList、SkillDetail、Channels、Users
 
-### Data Storage Structure
-```
-skills/
-└── {skill-id}/
-    ├── SKILL.md          # YAML frontmatter + Markdown body
-    ├── metadata.json     # id, version, category, status, timestamps
-    ├── scripts/          # Executable scripts (.py, .sh, .js, etc.)
-    ├── references/       # Documentation (.md, .txt, .json, etc.)
-    └── assets/           # Binary files (images, PDFs, etc.)
+**存储**：MySQL（表见 `server/db/init.sql`）+ `skills/` 目录
 
-data/
-├── channels.json         # Channel configurations
-└── publish_records.json  # Publication history
-```
+## 环境变量
 
-### SKILL.md Format
-```markdown
----
-name: skill-name
-description: Skill description
----
+`server/.env`：`PORT`、`MYSQL_*`、`JWT_SECRET`、`AI_API_KEY`、`AI_API_BASE_URL`、`AI_MODEL`
 
-# Markdown content here
-```
+## 权限
 
-## Environment Variables
+| 资源 | 匿名 | 用户 | 管理员 |
+|------|------|------|--------|
+| 技能浏览 | 只读 | 自己 | 完全 |
+| 技能操作 | 无 | 自己 | 完全 |
+| 渠道 | 无 | 自己 | 完全 |
+| local渠道 | 无 | 禁止 | 可 |
+| 用户管理 | 无 | 无 | 完全 |
+| AI生成 | 无 | 可 | 可 |
 
-Configure in `server/.env`:
-- `AI_API_KEY` - API key for AI generation
-- `AI_API_BASE_URL` - OpenAI-compatible API endpoint
-- `AI_MODEL` - Model name (default: gpt-4o)
-- `PORT` - Server port (default: 3030)
+## 扩展渠道
 
-## Key Implementation Details
-
-### YAML Frontmatter Parsing
-`db.js` contains `parseFrontmatter()` and `generateFrontmatter()` for reading/writing SKILL.md files. The frontmatter contains only `name` and `description`; other metadata goes in `metadata.json`.
-
-### AI Generation Flow
-1. User provides prompt → `/api/ai/generate`
-2. `aiService.js` loads `skill-creator/SKILL.md` as system prompt
-3. Calls OpenAI-compatible API, parses JSON response
-4. Returns structured skill object with `name`, `description`, `version`, `category`, `skill_content`
-
-### Static Assets
-Files in `skills/{id}/assets/` are served via `/assets/{id}/assets/{filename}`.
-
-### Publish Channels
-New channels can be added by:
-1. Creating a class extending `BaseChannel` in `server/channels/`
-2. Registering in `channelRegistry` in `server/channels/index.js`
+继承 `BaseChannel`，实现 `publish()`、`unpublish()`、`healthCheck()`。
