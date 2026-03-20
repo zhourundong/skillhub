@@ -23,7 +23,14 @@ router.get('/', async (req, res) => {
     const { user } = req;
     const isAdmin = user.role === 'admin';
     const channels = await db.listChannels(user.id, isAdmin);
-    res.json({ data: channels, registeredTypes: getRegisteredTypes() });
+
+    // 对非自己的渠道，整个 config 脱敏
+    const maskedChannels = channels.map(ch => ({
+      ...ch,
+      config: ch.created_by === user.id ? ch.config : null
+    }));
+
+    res.json({ data: maskedChannels, registeredTypes: getRegisteredTypes() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -34,6 +41,12 @@ router.post('/', async (req, res) => {
   try {
     const { name, type, config, enabled } = req.body;
     if (!name || !type) return res.status(400).json({ error: '名称和类型不能为空' });
+
+    // 检查名称是否重复
+    const existingChannel = await db.getChannelByName(name);
+    if (existingChannel) {
+      return res.status(400).json({ error: '渠道名称已存在' });
+    }
 
     const registered = getRegisteredTypes();
     if (!registered.includes(type)) {
@@ -103,6 +116,14 @@ router.put('/:id', async (req, res) => {
 
     const { name, config, enabled, isDefault } = req.body;
     const newConfig = config || ch.config;
+
+    // 如果修改了名称，检查是否重复
+    if (name && name !== ch.name) {
+      const existingChannel = await db.getChannelByName(name);
+      if (existingChannel) {
+        return res.status(400).json({ error: '渠道名称已存在' });
+      }
+    }
 
     // local 渠道必须配置 outputDir
     if (ch.type === 'local' && !newConfig.outputDir) {

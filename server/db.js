@@ -611,6 +611,20 @@ const db = {
     };
   },
 
+  async getChannelByName(name) {
+    const pool = getPool();
+    const [rows] = await pool.execute(
+      `SELECT * FROM ${TABLES.channels} WHERE name = ?`,
+      [name]
+    );
+    if (!rows[0]) return null;
+    return {
+      ...rows[0],
+      config: typeof rows[0].config === 'string' ? JSON.parse(rows[0].config) : rows[0].config,
+      isDefault: !!rows[0].is_default
+    };
+  },
+
   async getChannelByType(type) {
     const pool = getPool();
     const [rows] = await pool.execute(

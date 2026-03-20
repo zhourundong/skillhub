@@ -13,8 +13,9 @@ function canAccessChannel(user, channel) {
   if (!user || !channel) return false;
   // Admin can access all channels
   if (user.role === 'admin') return true;
-  // Regular user can only access their own channels
-  return channel.created_by === user.id;
+  // 普通用户可以访问所有启用的渠道（包括管理员创建的）
+  // 但只能使用，不能编辑/删除
+  return channel.enabled !== false;
 }
 
 // 发布 skill 到指定渠道（默认使用默认渠道）

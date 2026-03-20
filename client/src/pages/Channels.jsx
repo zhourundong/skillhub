@@ -358,16 +358,22 @@ export default function Channels() {
   };
 
   const resetCreateState = () => {
-    setShowForm(false);
-    // 普通用户默认选择非 local 类型
-    // 优先使用 types 中的非 local 类型，否则使用硬编码的默认值
-    const nonLocalType = types.find(t => t !== 'local') || 'github';
-    const defaultType = isAdmin ? 'local' : nonLocalType;
+    // 管理员默认 local，普通用户默认 remote
+    const defaultType = isAdmin ? 'local' : 'remote';
     setForm({
       name: '',
       type: defaultType,
       config: DEFAULT_CONFIGS[defaultType] || '{}'
     });
+    setGitHubConfig(createEmptyGitHubConfig());
+    setSshConfig(createEmptySshConfig());
+    setTesting(false);
+    setShowForm(true); // 显示新建表单
+  };
+
+  const cancelCreate = () => {
+    setShowForm(false);
+    setForm(createEmptyForm());
     setGitHubConfig(createEmptyGitHubConfig());
     setSshConfig(createEmptySshConfig());
     setTesting(false);
@@ -438,7 +444,7 @@ export default function Channels() {
       }
 
       await channelsApi.create({ name: form.name, type: form.type, config });
-      resetCreateState();
+      cancelCreate(); // 关闭弹窗
       showSuccess('发布渠道已创建。');
       load();
     } catch (err) {
@@ -625,7 +631,7 @@ export default function Channels() {
               </select>
             </div>
 
-            <button type="button" className="btn app-create-btn channels-create-btn" onClick={() => setShowForm(true)}>
+            <button type="button" className="btn app-create-btn channels-create-btn" onClick={resetCreateState}>
               <span className="app-create-btn-icon channels-create-icon" aria-hidden="true">
                 <svg viewBox="0 0 20 20" focusable="false">
                   <path d="M10 4.5v11" />
@@ -727,7 +733,7 @@ export default function Channels() {
             <div className="channels-empty-illustration">C</div>
             <h4>暂无匹配的发布渠道</h4>
             <p>可以调整筛选条件，或者直接新建一个渠道配置。</p>
-            <button type="button" className="btn btn-primary" onClick={() => setShowForm(true)}>
+            <button type="button" className="btn btn-primary" onClick={resetCreateState}>
               + 新建渠道
             </button>
           </div>
@@ -799,13 +805,13 @@ export default function Channels() {
                     </button>
                   </div>
                   <div className="channels-modal-actions-right">
-                    <button type="button" className="btn btn-default" onClick={resetCreateState}>取消</button>
+                    <button type="button" className="btn btn-default" onClick={cancelCreate}>取消</button>
                     <button type="submit" className="btn btn-primary">创建渠道</button>
                   </div>
                 </div>
               ) : (
                 <div className="channels-modal-actions">
-                  <button type="button" className="btn btn-default" onClick={resetCreateState}>取消</button>
+                  <button type="button" className="btn btn-default" onClick={cancelCreate}>取消</button>
                   <button type="submit" className="btn btn-primary">创建渠道</button>
                 </div>
               )}
