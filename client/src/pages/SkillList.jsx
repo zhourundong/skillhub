@@ -444,8 +444,8 @@ export default function SkillList() {
       </section>
 
       {showForm ? (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal skill-list-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal skill-list-modal">
             <div className="skill-list-modal-banner">
               <span className="skill-list-modal-tag">创建模式</span>
               <h3>新建技能</h3>
@@ -458,8 +458,8 @@ export default function SkillList() {
       ) : null}
 
       {showAi ? (
-        <div className="modal-overlay" onClick={() => setShowAi(false)}>
-          <div className="modal skill-list-modal skill-list-ai-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal skill-list-modal skill-list-ai-modal">
             <div className="skill-list-modal-banner">
               <span className="skill-list-modal-tag">AI 模式</span>
               <h3>AI 生成技能</h3>

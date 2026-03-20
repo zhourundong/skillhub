@@ -395,8 +395,8 @@ export default function Users() {
       </section>
 
       {showModal ? (
-        <div className="modal-overlay" onClick={closeEditorModal}>
-          <div className="modal users-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal users-modal">
             <div className="users-modal-banner">
               <span className="users-modal-tag">{editingUser ? '编辑模式' : '创建模式'}</span>
               <h3>{editingUser ? '编辑用户资料' : '新建用户账号'}</h3>

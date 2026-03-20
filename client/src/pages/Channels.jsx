@@ -248,7 +248,7 @@ function GitHubConfigForm({ config, onChange }) {
   );
 }
 
-function SSHConfigForm({ config, onChange, onTest, testing }) {
+function SSHConfigForm({ config, onChange }) {
   const update = (field, value) => {
     onChange({ ...config, [field]: value });
   };
@@ -321,17 +321,6 @@ function SSHConfigForm({ config, onChange, onTest, testing }) {
           rows={4}
           className="channels-code-textarea"
         />
-      </div>
-
-      <div className="channels-inline-actions channels-config-span">
-        <button
-          type="button"
-          className="btn btn-default"
-          onClick={onTest}
-          disabled={testing || !config.host || !config.username || (!config.password && !config.privateKey)}
-        >
-          {testing ? '测试中...' : '测试连接'}
-        </button>
       </div>
     </div>
   );
@@ -654,6 +643,7 @@ export default function Channels() {
               <span>渠道信息</span>
               <span>类型</span>
               <span>配置摘要</span>
+              <span>创建人</span>
               <span>状态</span>
               <span>操作</span>
             </div>
@@ -686,6 +676,10 @@ export default function Channels() {
 
                     <div className="channel-config-cell" data-label="配置摘要">
                       <pre>{displayConfig}</pre>
+                    </div>
+
+                    <div className="channel-creator-cell" data-label="创建人">
+                      <span>{channel.createdByName || '系统'}</span>
                     </div>
 
                     <div className="channel-status-cell" data-label="状态">
@@ -741,8 +735,8 @@ export default function Channels() {
       </section>
 
       {showForm ? (
-        <div className="modal-overlay" onClick={resetCreateState}>
-          <div className="modal channels-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal channels-modal">
             <ModalHeader
               tag="创建模式"
               title="新建发布渠道"
@@ -779,8 +773,6 @@ export default function Channels() {
                 <SSHConfigForm
                   config={sshConfig}
                   onChange={setSshConfig}
-                  onTest={handleTestSshConfig}
-                  testing={testing}
                 />
               ) : (
                 <div className="form-group">
@@ -794,18 +786,37 @@ export default function Channels() {
                 </div>
               )}
 
-              <div className="channels-modal-actions">
-                <button type="button" className="btn btn-default" onClick={resetCreateState}>取消</button>
-                <button type="submit" className="btn btn-primary">创建渠道</button>
-              </div>
+              {form.type === 'ssh' ? (
+                <div className="channels-modal-actions channels-modal-actions-split">
+                  <div className="channels-modal-actions-left">
+                    <button
+                      type="button"
+                      className="btn btn-default"
+                      onClick={handleTestSshConfig}
+                      disabled={testing || !sshConfig.host || !sshConfig.username || (!sshConfig.password && !sshConfig.privateKey)}
+                    >
+                      {testing ? '测试中...' : '测试连接'}
+                    </button>
+                  </div>
+                  <div className="channels-modal-actions-right">
+                    <button type="button" className="btn btn-default" onClick={resetCreateState}>取消</button>
+                    <button type="submit" className="btn btn-primary">创建渠道</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="channels-modal-actions">
+                  <button type="button" className="btn btn-default" onClick={resetCreateState}>取消</button>
+                  <button type="submit" className="btn btn-primary">创建渠道</button>
+                </div>
+              )}
             </form>
           </div>
         </div>
       ) : null}
 
       {editingId ? (
-        <div className="modal-overlay" onClick={resetEditState}>
-          <div className="modal channels-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal channels-modal">
             <ModalHeader
               tag="编辑模式"
               title="编辑发布渠道"
@@ -835,8 +846,6 @@ export default function Channels() {
                 <SSHConfigForm
                   config={sshConfig}
                   onChange={setSshConfig}
-                  onTest={handleTestSshConfig}
-                  testing={testing}
                 />
               ) : (
                 <div className="form-group">
@@ -850,10 +859,29 @@ export default function Channels() {
                 </div>
               )}
 
-              <div className="channels-modal-actions">
-                <button type="button" className="btn btn-default" onClick={resetEditState}>取消</button>
-                <button type="submit" className="btn btn-primary">保存修改</button>
-              </div>
+              {form.type === 'ssh' ? (
+                <div className="channels-modal-actions channels-modal-actions-split">
+                  <div className="channels-modal-actions-left">
+                    <button
+                      type="button"
+                      className="btn btn-default"
+                      onClick={handleTestSshConfig}
+                      disabled={testing || !sshConfig.host || !sshConfig.username || (!sshConfig.password && !sshConfig.privateKey)}
+                    >
+                      {testing ? '测试中...' : '测试连接'}
+                    </button>
+                  </div>
+                  <div className="channels-modal-actions-right">
+                    <button type="button" className="btn btn-default" onClick={resetEditState}>取消</button>
+                    <button type="submit" className="btn btn-primary">保存修改</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="channels-modal-actions">
+                  <button type="button" className="btn btn-default" onClick={resetEditState}>取消</button>
+                  <button type="submit" className="btn btn-primary">保存修改</button>
+                </div>
+              )}
             </form>
           </div>
         </div>

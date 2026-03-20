@@ -26,7 +26,7 @@ function LogoIcon() {
 }
 
 function Header() {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
@@ -92,7 +92,9 @@ function Header() {
         </div>
         <nav>
           <NavLink to="/" className={({ isActive }) => isActive ? 'active' : ''}>Skills 列表</NavLink>
-          <NavLink to="/channels" className={({ isActive }) => isActive ? 'active' : ''}>发布渠道</NavLink>
+          {isAuthenticated && (
+            <NavLink to="/channels" className={({ isActive }) => isActive ? 'active' : ''}>发布渠道</NavLink>
+          )}
           {isAdmin && (
             <NavLink to="/users" className={({ isActive }) => isActive ? 'active' : ''}>用户管理</NavLink>
           )}
