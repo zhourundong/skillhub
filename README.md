@@ -32,8 +32,13 @@ skillhub/
 │   │   └── init.sql       # MySQL 表结构初始化
 │   ├── skill-creator/     # AI 生成提示词
 │   └── .env               # 环境变量配置
+├── docker/                 # Docker 配置
+│   ├── nginx.conf         # Nginx 反向代理配置
+│   └── start.sh           # 容器启动脚本
 ├── skills/                 # Skill 文件缓存目录
-└── published_skills/       # 本地发布输出目录
+├── published_skills/       # 本地发布输出目录
+├── Dockerfile              # Docker 镜像构建文件
+└── docker-compose.yml      # Docker Compose 编排文件
 ```
 
 ## Skill 目录结构
@@ -101,6 +106,9 @@ MYSQL_USER=root
 MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=skill_hub
 
+# JWT 认证密钥（必填，请使用随机字符串）
+JWT_SECRET=your-random-secret-key
+
 # 文件上传限制（单位：MB）
 MAX_FILE_SIZE=2      # 单个文件最大 2MB
 MAX_ZIP_SIZE=10      # ZIP 包最大 10MB
@@ -128,6 +136,94 @@ cd client && npm run build
 ```
 
 访问 http://localhost:3000 使用应用。
+
+## Docker 部署
+
+### 快速启动
+
+```bash
+# 构建并启动
+docker-compose up -d --build
+
+# 查看日志
+docker-compose logs -f app
+```
+
+服务将在 `http://localhost` 启动（80 端口）。
+
+### 常用命令
+
+```bash
+# 启动服务
+docker-compose up -d
+
+# 停止服务
+docker-compose down
+
+# 停止并删除数据卷（重置数据库）
+docker-compose down -v
+
+# 查看运行状态
+docker-compose ps
+
+# 进入容器调试
+docker exec -it skillhub sh
+
+# 重新构建镜像
+docker-compose build --no-cache
+```
+
+### 配置说明
+
+修改 `docker-compose.yml` 中的环境变量：
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `JWT_SECRET` | JWT 密钥（**必须修改**） | your_jwt_secret_change_this |
+| `MYSQL_PASSWORD` | 数据库密码 | skillhub_password |
+| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 | root_password |
+| `AI_API_KEY` | AI 功能密钥（可选） | 空 |
+
+### 数据持久化
+
+以下目录会持久化存储：
+
+| 目录 | 说明 |
+|------|------|
+| `skills/` | 技能文件存储 |
+| `data/` | 数据文件 |
+| `logs/` | 日志文件 |
+| `mysql_data` | MySQL 数据（Docker volume） |
+
+### 单独构建镜像
+
+```bash
+# 构建镜像
+docker build -t skillhub:latest .
+
+# 运行容器（需要外部 MySQL）
+docker run -d \
+  -p 80:80 \
+  -e MYSQL_HOST=your_mysql_host \
+  -e MYSQL_PASSWORD=your_password \
+  -e JWT_SECRET=your_secret \
+  -v $(pwd)/skills:/app/skills \
+  skillhub:latest
+```
+
+### 架构说明
+
+Docker 部署使用多阶段构建：
+
+1. **前端构建阶段**: 编译 React 应用
+2. **后端准备阶段**: 安装生产依赖
+3. **生产镜像**: 基于 Alpine，包含 Nginx + Node.js
+
+生产镜像特性：
+- 使用 Nginx 反向代理（静态资源 + API 代理）
+- 非 root 用户运行，更安全
+- 健康检查支持
+- 镜像体积约 200MB
 
 ## 用户认证
 
