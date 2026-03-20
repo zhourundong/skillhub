@@ -142,14 +142,54 @@ cd client && npm run build
 ### 快速启动
 
 ```bash
-# 构建并启动
+# 1. 复制环境变量配置文件
+cp .env.example .env
+
+# 2. 编辑 .env 文件，修改必要配置
+# 必须修改: JWT_SECRET, MYSQL_PASSWORD
+vim .env
+
+# 3. 构建并启动
 docker-compose up -d --build
 
-# 查看日志
+# 4. 查看日志
 docker-compose logs -f app
 ```
 
 服务将在 `http://localhost` 启动（80 端口）。
+
+### 环境变量配置
+
+创建 `.env` 文件配置环境变量：
+
+```env
+# 必填配置
+JWT_SECRET=your-random-secret-key    # JWT 密钥（必须修改）
+MYSQL_PASSWORD=skillhub_password     # 数据库密码
+MYSQL_ROOT_PASSWORD=root_password    # MySQL root 密码
+
+# 可选配置
+PORT=80                              # 服务端口
+AI_API_KEY=sk-xxx                    # AI 密钥
+AI_API_BASE_URL=https://api.openai.com/v1
+AI_MODEL=gpt-4o
+```
+
+**重要**：`JWT_SECRET` 必须设置为随机字符串，否则服务无法启动。
+
+### 动态设置环境变量
+
+除了 `.env` 文件，还支持以下方式：
+
+```bash
+# 方式1: 命令行传递
+JWT_SECRET=abc123 MYSQL_PASSWORD=pass docker-compose up -d
+
+# 方式2: 导出环境变量后启动
+export JWT_SECRET=abc123
+export MYSQL_PASSWORD=pass
+docker-compose up -d
+```
 
 ### 常用命令
 

@@ -6,20 +6,21 @@ services:
     container_name: skillhub
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "${PORT:-80}:80"
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
       - PORT=3030
       - MYSQL_HOST=db
       - MYSQL_PORT=3306
       - MYSQL_USER=skillhub
-      - MYSQL_PASSWORD=skillhub_password
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-skillhub_password}
       - MYSQL_DATABASE=skillhub
-      - JWT_SECRET=your_jwt_secret_change_this
-      # AI 配置（可选）
-      # - AI_API_KEY=your_api_key
-      # - AI_API_BASE_URL=https://api.openai.com/v1
-      # - AI_MODEL=gpt-4o
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_API_BASE_URL=${AI_API_BASE_URL:-https://api.openai.com/v1}
+      - AI_MODEL=${AI_MODEL:-gpt-4o}
     volumes:
       - ./skills:/app/skills
       - ./data:/app/data
@@ -38,10 +39,10 @@ services:
     container_name: skillhub-mysql
     restart: unless-stopped
     environment:
-      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root_password}
       - MYSQL_DATABASE=skillhub
       - MYSQL_USER=skillhub
-      - MYSQL_PASSWORD=skillhub_password
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-skillhub_password}
     volumes:
       - mysql_data:/var/lib/mysql
       - ./server/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
