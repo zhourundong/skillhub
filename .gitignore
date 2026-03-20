@@ -18,3 +18,5 @@ server/db/syncFiles.js
 server/db/migrate-auth.js
 client/dist/*
 server/db/migrate-auth.sql
+server/db/migrate-db.js
+server/db/migrate-channels2.js

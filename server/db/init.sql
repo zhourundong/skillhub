@@ -99,3 +99,6 @@ CREATE TABLE IF NOT EXISTS t_sh_skill_files (
   INDEX idx_skill_type (skill_id, type),
   INDEX idx_path (path)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6、插入管理员账户
+INSERT INTO t_sh_users (id, username, password_hash, display_name, `role`) VALUES('7ed0cc80-4207-4b1e-ae83-ff40046193f4', 'admin', '$2b$10$WxHpX94GkJiZU8audH/tmuNAgH3YTCPCFaL3aY9Wkmts0LXXJedn.', '超级管理员', 'admin');
