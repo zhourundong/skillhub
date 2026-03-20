@@ -123,7 +123,6 @@ function fixJsonString(jsonStr) {
   }
 
   // 使用状态机方式重新构建 JSON
-  // 简单策略：找到 "key": "value" 模式，对 value 中的未转义引号进行转义
   let result = '';
   let i = 0;
   let inString = false;
@@ -133,7 +132,6 @@ function fixJsonString(jsonStr) {
     const char = jsonStr[i];
 
     if (!inString) {
-      // 不在字符串中
       if (char === '"') {
         inString = true;
         stringStartChar = '"';
@@ -142,22 +140,16 @@ function fixJsonString(jsonStr) {
         result += char;
       }
     } else {
-      // 在字符串中
       if (char === '\\' && i + 1 < jsonStr.length) {
-        // 已经是转义字符，保留
         result += char + jsonStr[i + 1];
         i++;
       } else if (char === '"') {
-        // 检查是否是字符串结束
-        // 看后面是否紧跟着 : 或 , 或 } 或 ] 或空白+这些
         const restStr = jsonStr.substring(i + 1).trimStart();
         const nextChar = restStr[0];
         if ([':', ',', '}', ']'].includes(nextChar) || restStr === '') {
-          // 字符串结束
           inString = false;
           result += char;
         } else {
-          // 字符串内部的引号，需要转义
           result += '\\"';
         }
       } else {
@@ -179,7 +171,6 @@ function parseGeneratedSkill(rawOutput) {
   if (codeBlockMatch) {
     try {
       let jsonStr = codeBlockMatch[1].trim();
-      // 尝试修复 JSON
       jsonStr = fixJsonString(jsonStr);
       const parsed = JSON.parse(jsonStr);
       if (isValidSkill(parsed)) {
@@ -210,7 +201,6 @@ function parseGeneratedSkill(rawOutput) {
       }
       if (endIndex > 0) {
         jsonStr = jsonStr.substring(0, endIndex);
-        // 尝试修复 JSON
         jsonStr = fixJsonString(jsonStr);
         const parsed = JSON.parse(jsonStr);
         if (isValidSkill(parsed)) {
@@ -247,30 +237,14 @@ function isValidSkill(parsed) {
 
 /**
  * 清理文本中的过度转义字符
- * 例如：将 \\" 转换为 "，将 \\\n 转换为 \n
  */
 function cleanEscapedText(text) {
   if (typeof text !== 'string') return text;
 
-  // 处理常见的过度转义情况
-  // \\" -> "
-  // \\' -> '
-  // \\n -> 实际换行（如果是在字符串中表示换行）
-  // \\\\ -> \\
-
   let result = text;
-
-  // 将 \\" 替换为 "（但保留 \" 用于 JSON 字符串中的引号）
   result = result.replace(/\\+"/g, '"');
-
-  // 将 \\' 替换为 '
   result = result.replace(/\\+'/g, "'");
-
-  // 将连续多个反斜杠减少到合理的数量
-  // \\\\\\\\ -> \\
   result = result.replace(/\\{4,}/g, '\\\\');
-
-  // 处理 \\\n（反斜杠后跟实际换行，通常是错误）
   result = result.replace(/\\\n/g, '\n');
 
   return result;
@@ -281,7 +255,6 @@ function fillDefaults(parsed) {
   for (const field of REQUIRED_FIELDS) {
     if (parsed[field] !== undefined && parsed[field] !== null) {
       let value = String(parsed[field]);
-      // 清理过度转义的字符
       value = cleanEscapedText(value);
       result[field] = value;
     }
@@ -290,15 +263,16 @@ function fillDefaults(parsed) {
 }
 
 /**
- * 调用 AI API
+ * 流式调用 AI API
+ * @returns {Promise<{content: string, reasoning: string, toolCalls: Array}>}
  */
-async function callAI(baseUrl, apiKey, model, messages, tools = []) {
+async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, onReasoning) {
   const url = baseUrl.replace(/\/+$/, '') + '/chat/completions';
 
   const requestBody = {
     model,
     messages,
-    stream: false,
+    stream: true, // 启用流式
   };
 
   // 只有有工具时才添加
@@ -307,19 +281,15 @@ async function callAI(baseUrl, apiKey, model, messages, tools = []) {
     requestBody.tool_choice = 'auto';
   }
 
-  console.log(`[AI] Requesting: ${url}`);
+  console.log(`[AI] Streaming request: ${url}`);
   console.log(`[AI] Model: ${model}`);
-  console.log(`[AI] Tools count: ${tools.length}`);
-  if (tools.length > 0) {
-    console.log('[AI] Tools:', JSON.stringify(tools, null, 2));
-  }
-  console.log('[AI] Messages:', JSON.stringify(messages, null, 2));
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
+      'Accept': 'text/event-stream',
     },
     body: JSON.stringify(requestBody),
     timeout: 300000,
@@ -333,18 +303,134 @@ async function callAI(baseUrl, apiKey, model, messages, tools = []) {
     throw new Error(message);
   }
 
+  // 处理流式响应
+  let content = '';
+  let reasoning = '';
+  let toolCalls = [];
+  let currentToolCall = null;
+
+  const reader = response.body;
+  let buffer = '';
+
+  for await (const chunk of reader) {
+    buffer += chunk.toString();
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+
+        try {
+          const json = JSON.parse(data);
+          const delta = json.choices?.[0]?.delta;
+
+          if (!delta) continue;
+
+          // 处理内容
+          if (delta.content) {
+            content += delta.content;
+            if (typeof onChunk === 'function') {
+              onChunk(delta.content);
+            }
+          }
+
+          // 处理思考内容
+          if (delta.reasoning_content) {
+            reasoning += delta.reasoning_content;
+            if (typeof onReasoning === 'function') {
+              onReasoning(delta.reasoning_content);
+            }
+          }
+
+          // 处理工具调用（流式）
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              if (tc.index !== undefined) {
+                // 确保数组有足够空间
+                while (toolCalls.length <= tc.index) {
+                  toolCalls.push({ id: '', type: 'function', function: { name: '', arguments: '' } });
+                }
+                currentToolCall = toolCalls[tc.index];
+
+                if (tc.id) currentToolCall.id = tc.id;
+                if (tc.type) currentToolCall.type = tc.type;
+                if (tc.function?.name) currentToolCall.function.name = tc.function.name;
+                if (tc.function?.arguments) currentToolCall.function.arguments += tc.function.arguments;
+              }
+            }
+          }
+        } catch (e) {
+          // 忽略解析错误
+        }
+      }
+    }
+  }
+
+  // 过滤掉无效的工具调用
+  toolCalls = toolCalls.filter(tc => tc.id && tc.function?.name);
+
+  return { content, reasoning, toolCalls };
+}
+
+/**
+ * 非流式调用 AI API（备用）
+ */
+async function callAI(baseUrl, apiKey, model, messages, tools = []) {
+  const url = baseUrl.replace(/\/+$/, '') + '/chat/completions';
+
+  const requestBody = {
+    model,
+    messages,
+    stream: false,
+  };
+
+  if (tools.length > 0) {
+    requestBody.tools = tools;
+    requestBody.tool_choice = 'auto';
+  }
+
+  console.log(`[AI] Non-streaming request: ${url}`);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(requestBody),
+    timeout: 300000,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const message = errorData.error?.message || `AI API 请求失败 (HTTP ${response.status})`;
+    throw new Error(message);
+  }
+
   return await response.json();
 }
 
 /**
- * 生成技能（支持 Function Calling）
+ * 生成技能（支持 Function Calling 和思考模式）
+ * @param {string} userPrompt - 用户输入的提示
+ * @param {function} onChunk - 内容回调（增量）
+ * @param {function} onReasoning - 思考内容回调（增量）
+ * @param {object} options - 配置选项
  */
-async function generateSkill(userPrompt, onChunk, options = {}) {
+async function generateSkill(userPrompt, onChunk, onReasoning, options = {}) {
+  // 兼容旧的调用方式（没有 onReasoning）
+  if (typeof onReasoning !== 'function') {
+    options = onReasoning || {};
+    onReasoning = null;
+  }
+
   const baseUrl = process.env.AI_API_BASE_URL || 'https://api.openai.com/v1';
   const apiKey = process.env.AI_API_KEY;
   const model = process.env.AI_MODEL || 'gpt-4o';
   const language = options.language || 'zh';
-  const enableTools = options.enableTools !== false; // 默认启用工具
+  const enableTools = options.enableTools !== false;
   const fileOptions = options.fileOptions || { scripts: false, references: true, assets: false };
 
   if (!apiKey) {
@@ -364,13 +450,11 @@ async function generateSkill(userPrompt, onChunk, options = {}) {
   if (fileOptions.references) allowedTypes.push('references（参考文档）');
   if (fileOptions.assets) allowedTypes.push('assets（静态资源）');
 
-  // 构建禁止的文件类型提示
   const forbiddenTypes = [];
   if (!fileOptions.scripts) forbiddenTypes.push('scripts（脚本文件）');
   if (!fileOptions.references) forbiddenTypes.push('references（参考文档）');
   if (!fileOptions.assets) forbiddenTypes.push('assets（静态资源）');
 
-  // 工具可用性说明
   const toolAvailabilitySection = allowedTypes.length > 0
     ? `## 可用工具
 
@@ -402,7 +486,7 @@ ${forbiddenSection}
 注意：
 1. skill_content 只需要写 Markdown 正文，不需要包含 name、description 等 frontmatter
 2. 辅助文件通过 \`generate_file\` 工具生成，不要包含在最终 JSON 中
-3. JSON 字符串中的引号需要转义为 \\\"
+3. JSON 字符串中的引号需要转义为 \\"
 4. **name 字段只能包含字母、数字和连字符(-)，不能包含空格、下划线、中文或其他特殊字符**`;
 
   const messages = [
@@ -413,15 +497,12 @@ ${forbiddenSection}
   console.log('[AI] File options:', JSON.stringify(fileOptions));
   console.log('[AI] Allowed types:', allowedTypes.map(t => t.split('（')[0]).join(', '));
   console.log('[AI] Forbidden types:', forbiddenTypes.map(t => t.split('（')[0]).join(', '));
-  console.log('[AI] System prompt:', systemPrompt);
-  console.log('[AI] User prompt:', userPrompt);
 
   // 自动注入模拟的工具调用结果
   const skillMdBody = readSkillCreatorBody();
   const schemasContent = readSchemasContent();
 
   if (skillMdBody || schemasContent) {
-    // 模拟 assistant 已经调用了预加载工具
     const fakeToolCalls = [];
     const fakeToolResults = [];
 
@@ -475,42 +556,37 @@ ${forbiddenSection}
 
   let iteration = 0;
   let lastContent = '';
+  let lastReasoning = '';
 
   while (iteration < MAX_TOOL_ITERATIONS) {
     iteration++;
     console.log(`[AI] Iteration ${iteration}`);
 
     try {
-      const data = await callAI(baseUrl, apiKey, model, messages, tools);
-      const assistantMessage = data.choices?.[0]?.message;
+      // 使用流式调用
+      const result = await streamAI(baseUrl, apiKey, model, messages, tools, onChunk, onReasoning);
 
-      if (!assistantMessage) {
-        throw new Error('AI 返回空响应');
-      }
+      lastContent = result.content;
+      lastReasoning = result.reasoning;
 
-      // 记录内容
-      if (assistantMessage.content) {
-        lastContent = assistantMessage.content;
-        console.log(`[AI] Response content length: ${lastContent.length}`);
-
-        if (typeof onChunk === 'function') {
-          onChunk(lastContent);
-        }
+      console.log(`[AI] Response content length: ${lastContent.length}`);
+      if (lastReasoning) {
+        console.log(`[AI] Reasoning content length: ${lastReasoning.length}`);
       }
 
       // 检查是否有工具调用
-      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-        console.log(`[AI] Tool calls count: ${assistantMessage.tool_calls.length}`);
+      if (result.toolCalls && result.toolCalls.length > 0) {
+        console.log(`[AI] Tool calls count: ${result.toolCalls.length}`);
 
         // 添加助手消息到历史
         messages.push({
           role: 'assistant',
-          content: assistantMessage.content || '',
-          tool_calls: assistantMessage.tool_calls
+          content: lastContent || '',
+          tool_calls: result.toolCalls
         });
 
         // 处理每个工具调用
-        for (const toolCall of assistantMessage.tool_calls) {
+        for (const toolCall of result.toolCalls) {
           const toolName = toolCall.function.name;
           let args = {};
 
@@ -522,26 +598,25 @@ ${forbiddenSection}
 
           console.log(`[AI] Tool call: ${toolName}`, JSON.stringify(args));
 
-          const result = await executeToolCall(toolName, args);
+          const toolResult = await executeToolCall(toolName, args);
 
           // 如果是文件生成工具且成功，触发回调
-          if (toolName === 'generate_file' && result.success) {
+          if (toolName === 'generate_file' && toolResult.success) {
             emitFileGenerated({
-              type: result.type,
-              filename: result.filename,
-              size: result.size,
-              totalFiles: result.totalFiles
+              type: toolResult.type,
+              filename: toolResult.filename,
+              size: toolResult.size,
+              totalFiles: toolResult.totalFiles
             });
           }
 
-          console.log(`[AI] Tool result: ${result.success ? 'success' : 'failed'}`, result.success ? '' : result.error);
-          console.log('[AI] Tool result:', JSON.stringify(result).substring(0, 500));
+          console.log(`[AI] Tool result: ${toolResult.success ? 'success' : 'failed'}`);
 
           // 添加工具结果到历史
           messages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
-            content: JSON.stringify(result)
+            content: JSON.stringify(toolResult)
           });
         }
 
@@ -553,14 +628,14 @@ ${forbiddenSection}
       const parseResult = parseGeneratedSkill(lastContent);
       const generatedFiles = getGeneratedFiles();
 
-      // 合并结果
       const finalResult = {
         ...parseResult,
         iterations: iteration,
         toolCallsMade: iteration - 1,
         scripts: generatedFiles.scripts,
         references: generatedFiles.references,
-        assets: generatedFiles.assets
+        assets: generatedFiles.assets,
+        reasoning: lastReasoning
       };
 
       if (parseResult.success) {
@@ -583,8 +658,9 @@ ${forbiddenSection}
         try {
           const data = await callAI(baseUrl, apiKey, model, messages, []);
           const content = data.choices?.[0]?.message?.content || '';
+          const reasoning = data.choices?.[0]?.message?.reasoning_content || '';
           const parseResult = parseGeneratedSkill(content);
-          return { ...parseResult, iterations: 1, toolCallsMade: 0, fallback: true };
+          return { ...parseResult, iterations: 1, toolCallsMade: 0, fallback: true, reasoning };
         } catch (retryErr) {
           throw retryErr;
         }
@@ -605,7 +681,8 @@ ${forbiddenSection}
     maxIterationsReached: true,
     scripts: generatedFiles.scripts,
     references: generatedFiles.references,
-    assets: generatedFiles.assets
+    assets: generatedFiles.assets,
+    reasoning: lastReasoning
   };
 }
 

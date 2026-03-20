@@ -14,7 +14,11 @@ export default function AiGenerator({ onComplete, onCancel }) {
   const [expandedFiles, setExpandedFiles] = useState({});
   const [generatingFiles, setGeneratingFiles] = useState({ scripts: [], references: [], assets: [] });
   const [statusText, setStatusText] = useState('');
+  const [reasoningContent, setReasoningContent] = useState(''); // 思考内容
+  const [showReasoning, setShowReasoning] = useState(true); // 思考内容默认展开
+  const [streamContent, setStreamContent] = useState(''); // 流式内容（用于调试）
   const abortControllerRef = useRef(null);
+  const hasReasoningRef = useRef(false); // 用于追踪是否有思考内容
 
   // 辅助文件选项，默认只勾选参考资料
   const [fileOptions, setFileOptions] = useState({
@@ -41,6 +45,10 @@ export default function AiGenerator({ onComplete, onCancel }) {
     setExpandedFiles({});
     setGeneratingFiles({ scripts: [], references: [], assets: [] });
     setStatusText('正在连接 AI 服务...');
+    setReasoningContent('');
+    setShowReasoning(true); // 默认展开
+    setStreamContent('');
+    hasReasoningRef.current = false; // 重置思考内容标记
 
     // 创建 AbortController 用于取消请求
     abortControllerRef.current = new AbortController();
@@ -93,10 +101,20 @@ export default function AiGenerator({ onComplete, onCancel }) {
                   [data.type]: [...prev[data.type], { filename: data.filename, size: data.size }]
                 }));
                 setStatusText(`生成文件: ${data.filename}`);
-              } else if (eventType === 'chunk') {
+              } else if (eventType === 'reasoning') {
+                // 思考内容（增量发送）
+                setReasoningContent(prev => prev + data.content);
+                hasReasoningRef.current = true;
                 setStatusText('AI 正在思考...');
+              } else if (eventType === 'chunk') {
+                // 流式内容（增量发送）
+                setStreamContent(prev => prev + data.content);
+                setStatusText('AI 正在生成...');
               } else if (eventType === 'done') {
-                // 完成
+                // 完成 - 思考结束后默认收起
+                if (hasReasoningRef.current) {
+                  setShowReasoning(false);
+                }
                 if (data.success) {
                   // 合并生成的文件内容
                   const skill = {
@@ -144,16 +162,33 @@ export default function AiGenerator({ onComplete, onCancel }) {
   };
 
   const handleConfirm = () => {
-    if (result) {
-      onComplete({
-        name: result.name,
-        description: result.description,
-        skill_content: result.skill_content,
-        scripts: result.scripts || [],
-        references: result.references || [],
-        assets: result.assets || []
-      });
+    if (!result) return;
+
+    // 验证必填字段
+    const errors = [];
+    if (!result.name || !result.name.trim()) {
+      errors.push('名称不能为空');
     }
+    if (!result.description || !result.description.trim()) {
+      errors.push('描述不能为空');
+    }
+    if (!result.skill_content || !result.skill_content.trim()) {
+      errors.push('Skill 内容不能为空');
+    }
+
+    if (errors.length > 0) {
+      setError(errors.join('、'));
+      return;
+    }
+
+    onComplete({
+      name: result.name.trim(),
+      description: result.description.trim(),
+      skill_content: result.skill_content.trim(),
+      scripts: result.scripts || [],
+      references: result.references || [],
+      assets: result.assets || []
+    });
   };
 
   const handleRegenerate = () => {
@@ -163,6 +198,10 @@ export default function AiGenerator({ onComplete, onCancel }) {
       setRawOutput('');
       setExpandedFiles({});
       setGeneratingFiles({ scripts: [], references: [], assets: [] });
+      setReasoningContent('');
+      setShowReasoning(true); // 默认展开
+      setStreamContent('');
+      hasReasoningRef.current = false;
     } else {
       setConfirmRegenerate(true);
     }
@@ -175,10 +214,16 @@ export default function AiGenerator({ onComplete, onCancel }) {
     setRawOutput('');
     setExpandedFiles({});
     setGeneratingFiles({ scripts: [], references: [], assets: [] });
+    setReasoningContent('');
+    setShowReasoning(true); // 默认展开
+    setStreamContent('');
+    hasReasoningRef.current = false;
   };
 
   const updateField = (field, value) => {
     setResult(prev => ({ ...prev, [field]: value }));
+    // 清除错误提示
+    if (error) setError('');
   };
 
   const toggleFileExpand = (type, index) => {
@@ -478,6 +523,79 @@ export default function AiGenerator({ onComplete, onCancel }) {
             <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
           </div>
 
+          {/* 思考过程展示（部分模型支持）- 放在最上面 */}
+          {reasoningContent && (
+            <div style={{
+              background: '#f0f7ff',
+              border: '1px solid #91d5ff',
+              borderRadius: 6,
+              padding: 12,
+              marginBottom: 12
+            }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                onClick={() => setShowReasoning(!showReasoning)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: '#1890ff' }}>💭</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: '#1890ff' }}>思考过程</span>
+                  <span style={{ fontSize: 11, color: '#999' }}>({reasoningContent.length} 字符)</span>
+                </div>
+                <span style={{ fontSize: 12, color: '#1890ff', cursor: 'pointer' }}>
+                  {showReasoning ? '收起 ▲' : '展开 ▼'}
+                </span>
+              </div>
+              {showReasoning && (
+                <pre style={{
+                  background: '#fff',
+                  padding: 12,
+                  borderRadius: 4,
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  maxHeight: 300,
+                  overflow: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  margin: '12px 0 0 0',
+                  border: '1px solid #e8e8e8'
+                }}>
+                  {reasoningContent}
+                </pre>
+              )}
+            </div>
+          )}
+
+          {/* 流式内容展示（实时显示 AI 输出） */}
+          {streamContent && !reasoningContent && (
+            <div style={{
+              background: '#fafafa',
+              border: '1px solid #e8e8e8',
+              borderRadius: 6,
+              padding: 12,
+              marginBottom: 12
+            }}>
+              <div style={{ fontSize: 13, color: '#999', marginBottom: 8 }}>
+                <span style={{ marginRight: 6 }}>📝</span>
+                生成内容预览
+                <span style={{ fontSize: 11, marginLeft: 8 }}>({streamContent.length} 字符)</span>
+              </div>
+              <pre style={{
+                background: '#fff',
+                padding: 12,
+                borderRadius: 4,
+                fontSize: 12,
+                lineHeight: 1.6,
+                maxHeight: 200,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                margin: 0
+              }}>
+                {streamContent}
+              </pre>
+            </div>
+          )}
+
           {/* 实时显示生成中的文件 */}
           {hasGeneratingFiles && (
             <div style={{
@@ -508,31 +626,79 @@ export default function AiGenerator({ onComplete, onCancel }) {
       {result && !parseError && (
         <>
           <div style={{ marginBottom: 16 }}>
+            {/* 思考过程展示（生成完成后可查看） */}
+            {reasoningContent && (
+              <div style={{
+                background: '#f0f7ff',
+                border: '1px solid #91d5ff',
+                borderRadius: 6,
+                padding: 12,
+                marginBottom: 16
+              }}>
+                <div
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                  onClick={() => setShowReasoning(!showReasoning)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#1890ff' }}>💭</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: '#1890ff' }}>思考过程</span>
+                    <span style={{ fontSize: 11, color: '#999' }}>({reasoningContent.length} 字符)</span>
+                  </div>
+                  <span style={{ fontSize: 12, color: '#1890ff', cursor: 'pointer' }}>
+                    {showReasoning ? '收起 ▲' : '展开 ▼'}
+                  </span>
+                </div>
+                {showReasoning && (
+                  <pre style={{
+                    background: '#fff',
+                    padding: 12,
+                    borderRadius: 4,
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    maxHeight: 300,
+                    overflow: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    margin: '12px 0 0 0',
+                    border: '1px solid #e8e8e8'
+                  }}>
+                    {reasoningContent}
+                  </pre>
+                )}
+              </div>
+            )}
+
             <div className="form-group">
               <label>名称 *</label>
               <input
                 value={result.name || ''}
                 onChange={e => updateField('name', e.target.value)}
                 placeholder="技能名称"
+                style={!result.name?.trim() ? { borderColor: '#ff4d4f' } : {}}
               />
               <p style={{ fontSize: 11, color: '#999', marginTop: 4 }}>只能包含字母、数字和连字符(-)</p>
             </div>
             <div className="form-group">
-              <label>描述</label>
+              <label>描述 *</label>
               <textarea
                 value={result.description || ''}
                 onChange={e => updateField('description', e.target.value)}
                 placeholder="技能功能描述"
                 rows={3}
+                style={!result.description?.trim() ? { borderColor: '#ff4d4f' } : {}}
               />
             </div>
             <div className="form-group">
-              <label>Skill 内容 (Markdown)</label>
+              <label>Skill 内容 (Markdown) *</label>
               <textarea
                 value={result.skill_content || ''}
                 onChange={e => updateField('skill_content', e.target.value)}
                 placeholder="Skill 内容"
-                style={{ height: 250, overflow: 'auto' }}
+                style={{
+                  height: 250,
+                  overflow: 'auto',
+                  ...(!result.skill_content?.trim() ? { borderColor: '#ff4d4f' } : {})
+                }}
               />
             </div>
 

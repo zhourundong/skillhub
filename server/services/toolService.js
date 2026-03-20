@@ -87,6 +87,19 @@ const toolExecutors = {
       return { success: false, error: '文件名只能包含文件名，不能包含路径' };
     }
 
+    // 检查是否已存在同名文件
+    const existingFile = generatedFiles[type].find(f => f.filename === safeFilename);
+    if (existingFile) {
+      console.log(`[Tool] Duplicate file: ${type}/${safeFilename} already exists`);
+      return {
+        success: false,
+        error: `文件 ${type}/${safeFilename} 已存在，请勿重复生成。`,
+        duplicate: true,
+        filename: safeFilename,
+        existingSize: existingFile.content?.length || 0
+      };
+    }
+
     // 验证文件大小
     const contentStr = content || '';
     if (contentStr.length > MAX_FILE_SIZE) {

@@ -42,16 +42,22 @@ router.post('/generate', authenticateToken, async (req, res) => {
     sendEvent('file', file);
   };
 
-  // 内容回调（用于调试）
+  // 内容回调（流式增量内容）
   const onChunk = (content) => {
-    sendEvent('chunk', { content: content.substring(0, 200) });
+    sendEvent('chunk', { content });
+  };
+
+  // 思考内容回调（流式增量内容）
+  const onReasoning = (reasoning) => {
+    console.log(`[AI Route] Reasoning chunk: ${reasoning.substring(0, 100)}...`);
+    sendEvent('reasoning', { content: reasoning });
   };
 
   try {
     // 注册文件生成回调
     aiService.setFileGeneratedCallback(onFileGenerated);
 
-    const result = await aiService.generateSkill(prompt, onChunk, { language, fileOptions });
+    const result = await aiService.generateSkill(prompt, onChunk, onReasoning, { language, fileOptions });
 
     // 发送最终结果
     sendEvent('done', {
