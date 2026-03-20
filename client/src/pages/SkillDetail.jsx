@@ -26,7 +26,7 @@ function formatDateTime(isoString) {
 export default function SkillDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAdmin, isOwner, isAuthenticated } = useAuth();
+  const { user, isAdmin, isOwner, isAuthenticated } = useAuth();
   const [skill, setSkill] = useState(null);
   const [records, setRecords] = useState([]);
   const [channels, setChannels] = useState([]);

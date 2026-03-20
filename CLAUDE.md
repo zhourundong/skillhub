@@ -35,3 +35,5 @@ cd client && npm run dev   # 启动前端 (3000)
 ## 扩展渠道
 
 继承 `BaseChannel`，实现 `publish()`、`unpublish()`、`healthCheck()`。
+
+有我自己来启动服务，禁止启动，每次更改代码后需要提醒我是否要重启服务

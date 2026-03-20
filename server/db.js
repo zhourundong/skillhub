@@ -582,13 +582,26 @@ const db = {
   // ========== Channels ==========
   async listChannels(userId = null, isAdmin = false) {
     const pool = getPool();
-    // All users can see all channels, join users table to get creator info
-    const [rows] = await pool.execute(
-      `SELECT c.*, u.display_name AS created_by_name, u.username AS created_by_username
-       FROM ${TABLES.channels} c
-       LEFT JOIN ${TABLES.users} u ON c.created_by = u.id
-       ORDER BY c.created_at ASC`
-    );
+    let query, params;
+
+    if (isAdmin) {
+      // Admin can see all channels
+      query = `SELECT c.*, u.display_name AS created_by_name, u.username AS created_by_username
+               FROM ${TABLES.channels} c
+               LEFT JOIN ${TABLES.users} u ON c.created_by = u.id
+               ORDER BY c.created_at ASC`;
+      params = [];
+    } else {
+      // Regular user can only see their own channels + admin-created channels
+      query = `SELECT c.*, u.display_name AS created_by_name, u.username AS created_by_username
+               FROM ${TABLES.channels} c
+               LEFT JOIN ${TABLES.users} u ON c.created_by = u.id
+               WHERE c.created_by = ? OR u.role = 'admin'
+               ORDER BY c.created_at ASC`;
+      params = [userId];
+    }
+
+    const [rows] = await pool.execute(query, params);
     return rows.map(row => ({
       ...row,
       config: typeof row.config === 'string' ? JSON.parse(row.config) : row.config,
