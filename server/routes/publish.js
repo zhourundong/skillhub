@@ -18,11 +18,23 @@ function canAccessChannel(user, channel) {
   return channel.enabled !== false;
 }
 
+// Helper: check if user can manage skill
+function canManageSkill(user, skill) {
+  if (!user || !skill) return false;
+  if (user.role === 'admin') return true;
+  return skill.created_by === user.id;
+}
+
 // 发布 skill 到指定渠道（默认使用默认渠道）
 router.post('/:skillId/publish', async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.skillId);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+    // 检查是否有权限操作此 Skill
+    if (!canManageSkill(req.user, skill)) {
+      return res.status(403).json({ error: '没有权限操作此 Skill' });
+    }
 
     const { channelId } = req.body;
     let channel;
@@ -64,6 +76,11 @@ router.post('/:skillId/unpublish', async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.skillId);
     if (!skill) return res.status(404).json({ error: 'Skill 不存在' });
+
+    // 检查是否有权限操作此 Skill
+    if (!canManageSkill(req.user, skill)) {
+      return res.status(403).json({ error: '没有权限操作此 Skill' });
+    }
 
     // 获取所有已发布记录
     const records = (await db.listPublishRecords(req.params.skillId))
