@@ -24,8 +24,14 @@ const PORT = process.env.PORT || 3030;
 app.use(cors());
 app.use(express.json());
 
-// 静态资源：skills/{id}/assets/* 可通过 /assets/{id}/* 访问
-app.use('/assets', express.static(skillsDir));
+// 生产环境下服务前端静态文件（优先级高于技能资源）
+const clientDist = path.join(__dirname, '..', 'client', 'dist');
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+}
+
+// 技能静态资源：skills/{id}/assets/* 可通过 /skill-assets/{id}/assets/* 访问
+app.use('/skill-assets', express.static(skillsDir));
 
 // 健康检查端点
 app.get('/api/health', (req, res) => {
@@ -66,10 +72,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || '服务器内部错误' });
 });
 
-// 生产环境下服务前端静态文件
-const clientDist = path.join(__dirname, '..', 'client', 'dist');
+// 前端路由回退（SPA 应用）
 if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist));
   app.get('*', (req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
