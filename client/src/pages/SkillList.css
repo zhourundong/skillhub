@@ -444,19 +444,20 @@
   flex-wrap: wrap;
 }
 
-.skill-list-modal {
+/* 使用更高优先级的选择器覆盖全局 .modal 的宽度 */
+.modal.skill-list-modal {
   padding: 0;
   overflow-x: hidden;
   overflow-y: auto;
   border-radius: 24px;
-  width: min(1320px, calc(100vw - 40px));
-  max-width: 1320px;
+  width: min(900px, calc(100vw - 40px)) !important;
+  max-width: 900px !important;
   max-height: 94vh;
 }
 
-.skill-list-ai-modal {
-  width: min(1480px, calc(100vw - 40px));
-  max-width: 1480px;
+.modal.skill-list-ai-modal {
+  width: min(900px, calc(100vw - 40px)) !important;
+  max-width: 900px !important;
 }
 
 .skill-list-modal-banner {
