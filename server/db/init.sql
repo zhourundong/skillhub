@@ -99,28 +99,3 @@ CREATE TABLE IF NOT EXISTS t_sh_skill_files (
   INDEX idx_skill_type (skill_id, type),
   INDEX idx_path (path)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- =====================================================
--- Migration: Add user authentication support
--- Run these statements if upgrading from a previous version
--- =====================================================
-
--- Create users table if not exists
--- CREATE TABLE IF NOT EXISTS t_sh_users (
---   id VARCHAR(36) PRIMARY KEY,
---   username VARCHAR(50) NOT NULL UNIQUE,
---   password_hash VARCHAR(255) NOT NULL,
---   display_name VARCHAR(100),
---   role ENUM('admin', 'user') DEFAULT 'user',
---   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
---   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
---   INDEX idx_username (username),
---   INDEX idx_role (role)
--- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Add created_by and updated_by columns to skills table if not exists
--- ALTER TABLE t_sh_skills ADD COLUMN created_by VARCHAR(36);
--- ALTER TABLE t_sh_skills ADD COLUMN updated_by VARCHAR(36);
--- ALTER TABLE t_sh_skills ADD INDEX idx_created_by (created_by);
--- ALTER TABLE t_sh_skills ADD CONSTRAINT fk_created_by FOREIGN KEY (created_by) REFERENCES t_sh_users(id) ON DELETE SET NULL;
--- ALTER TABLE t_sh_skills ADD CONSTRAINT fk_updated_by FOREIGN KEY (updated_by) REFERENCES t_sh_users(id) ON DELETE SET NULL;
