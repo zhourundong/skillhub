@@ -15,3 +15,4 @@ logs/*
 server/db/migrate.js
 server/db/syncFiles.js
 server/db/migrate-auth.js
+client/dist/*

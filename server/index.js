@@ -27,6 +27,11 @@ app.use(express.json());
 // 静态资源：skills/{id}/assets/* 可通过 /assets/{id}/* 访问
 app.use('/assets', express.static(skillsDir));
 
+// 健康检查端点
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // API 路由
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
