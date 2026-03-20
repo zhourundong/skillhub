@@ -723,7 +723,7 @@ export default function AiGenerator({ onComplete, onCancel }) {
       )}
 
       {/* 解析失败：只读内容框 */}
-      {parseError && rawOutput && (
+      {parseError && (
         <>
           <div style={{
             background: '#fff2f0',
@@ -733,32 +733,34 @@ export default function AiGenerator({ onComplete, onCancel }) {
             marginBottom: 16
           }}>
             <p style={{ color: '#ff4d4f', marginBottom: 8, fontWeight: 500 }}>
-              ⚠️ 模型返回内容无法解析为有效的 Skill 格式
+              ⚠️ {rawOutput ? '模型返回内容无法解析为有效的 Skill 格式' : 'AI 响应异常，请重试'}
             </p>
             <p style={{ color: '#666', fontSize: 13 }}>
-              请修改提示词后重新生成。确保提示词清晰描述你需要的 Skill 功能。
+              {rawOutput ? '请修改提示词后重新生成。确保提示词清晰描述你需要的 Skill 功能。' : 'AI 响应异常，请重试。'}
             </p>
           </div>
-          <div className="form-group">
-            <label>模型返回内容</label>
-            <pre style={{
-              background: '#f8f9fa',
-              padding: 16,
-              borderRadius: 6,
-              fontSize: 13,
-              lineHeight: 1.5,
-              maxHeight: 300,
-              overflow: 'auto',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              border: '1px solid #e8e8e8'
-            }}>
-              {rawOutput}
-            </pre>
-          </div>
+          {rawOutput && (
+            <div className="form-group">
+              <label>模型返回内容</label>
+              <pre style={{
+                background: '#f8f9fa',
+                padding: 16,
+                borderRadius: 6,
+                fontSize: 13,
+                lineHeight: 1.5,
+                maxHeight: 300,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                border: '1px solid #e8e8e8'
+              }}>
+                {rawOutput}
+              </pre>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn btn-default" onClick={handleCancel}>取消</button>
-            <button className="btn btn-primary" onClick={handleRegenerate}>修改提示词重新生成</button>
+            <button className="btn btn-primary" onClick={handleRegenerate}>{rawOutput ? '修改提示词重新生成' : '重新生成'}</button>
           </div>
         </>
       )}
