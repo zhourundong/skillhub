@@ -348,7 +348,7 @@ async function generateSkill(userPrompt, onChunk, options = {}) {
   const fileOptions = options.fileOptions || { scripts: false, references: true, assets: false };
 
   if (!apiKey) {
-    throw new Error('AI 服务未配置，请设置 AI_API_KEY 环境变量');
+    throw new Error('AI 服务未配置');
   }
 
   // 重置生成的文件

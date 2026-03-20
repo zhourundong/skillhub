@@ -22,7 +22,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
   // Check AI_API_KEY is configured
   if (!process.env.AI_API_KEY) {
-    return res.status(503).json({ error: 'AI 服务未配置，请设置 AI_API_KEY 环境变量' });
+    return res.status(503).json({ error: 'AI 服务未配置' });
   }
 
   // 设置 SSE headers
