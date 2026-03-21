@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS t_sh_publish_records (
   id VARCHAR(36) PRIMARY KEY,
   skill_id VARCHAR(36) NOT NULL,
   channel_id VARCHAR(36) NOT NULL,
+  version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
   status ENUM('published', 'unpublished') DEFAULT 'published',
   published_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   unpublished_at DATETIME NULL,
@@ -68,7 +69,8 @@ CREATE TABLE IF NOT EXISTS t_sh_publish_records (
   INDEX idx_skill_id (skill_id),
   INDEX idx_channel_id (channel_id),
   INDEX idx_status (status),
-  INDEX idx_published_at (published_at)
+  INDEX idx_published_at (published_at),
+  INDEX idx_skill_version (skill_id, version)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4. Custom directories table
@@ -102,3 +104,16 @@ CREATE TABLE IF NOT EXISTS t_sh_skill_files (
 
 -- 6、插入管理员账户
 INSERT INTO t_sh_users (id, username, password_hash, display_name, `role`) VALUES('7ed0cc80-4207-4b1e-ae83-ff40046193f4', 'admin', '$2b$10$WxHpX94GkJiZU8audH/tmuNAgH3YTCPCFaL3aY9Wkmts0LXXJedn.', '超级管理员', 'admin');
+
+-- ========== 迁移脚本 ==========
+-- 以下语句用于现有数据库升级，新数据库可忽略
+
+-- 为发布记录表添加版本号字段（如果不存在）
+-- ALTER TABLE t_sh_publish_records ADD COLUMN version VARCHAR(50) NOT NULL DEFAULT '1.0.0' AFTER channel_id;
+-- ALTER TABLE t_sh_publish_records ADD INDEX idx_skill_version (skill_id, version);
+
+-- 为现有发布记录设置版本号（从关联的技能表获取）
+-- UPDATE t_sh_publish_records pr
+-- JOIN t_sh_skills s ON pr.skill_id = s.id
+-- SET pr.version = s.version
+-- WHERE pr.version = '1.0.0' OR pr.version IS NULL;

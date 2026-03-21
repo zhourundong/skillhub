@@ -775,15 +775,15 @@ const db = {
     return rows;
   },
 
-  async createPublishRecord(skillId, channelId) {
+  async createPublishRecord(skillId, channelId, version) {
     const pool = getPool();
     const id = uuidv4();
     const now = new Date();
 
     await pool.execute(
-      `INSERT INTO ${TABLES.publish_records} (id, skill_id, channel_id, status, published_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [id, skillId, channelId, 'published', now]
+      `INSERT INTO ${TABLES.publish_records} (id, skill_id, channel_id, version, status, published_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, skillId, channelId, version, 'published', now]
     );
 
     const [rows] = await pool.execute(
@@ -794,6 +794,15 @@ const db = {
       [id]
     );
     return rows[0];
+  },
+
+  async isVersionPublished(skillId, version) {
+    const pool = getPool();
+    const [rows] = await pool.execute(
+      `SELECT COUNT(*) as count FROM ${TABLES.publish_records} WHERE skill_id = ? AND version = ?`,
+      [skillId, version]
+    );
+    return rows[0].count > 0;
   },
 
   async unpublishRecord(recordId) {

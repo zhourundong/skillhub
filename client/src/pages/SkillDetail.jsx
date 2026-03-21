@@ -296,6 +296,7 @@ export default function SkillDetail() {
               <tr style={{ borderBottom: '1px solid #eee', textAlign: 'left' }}>
                 <th style={{ padding: '8px 0' }}>渠道</th>
                 <th>类型</th>
+                <th>版本</th>
                 <th>状态</th>
                 <th>发布时间</th>
                 <th>下架时间</th>
@@ -306,6 +307,7 @@ export default function SkillDetail() {
                 <tr key={r.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
                   <td style={{ padding: '8px 0' }}>{r.channel_name}</td>
                   <td>{r.channel_type}</td>
+                  <td>v{r.version || '1.0.0'}</td>
                   <td><span className={`status-badge status-${r.status}`}>{r.status}</span></td>
                   <td>{formatDateTime(r.published_at)}</td>
                   <td>{formatDateTime(r.unpublished_at)}</td>

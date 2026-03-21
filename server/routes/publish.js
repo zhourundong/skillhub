@@ -36,6 +36,16 @@ router.post('/:skillId/publish', async (req, res) => {
       return res.status(403).json({ error: '没有权限操作此 Skill' });
     }
 
+    // 检查版本号是否已发布过
+    const isVersionUsed = await db.isVersionPublished(skill.id, skill.version);
+    if (isVersionUsed) {
+      return res.status(400).json({
+        error: `版本号 ${skill.version} 已发布过，请更新版本号后再发布`,
+        code: 'VERSION_CONFLICT',
+        current_version: skill.version
+      });
+    }
+
     const { channelId } = req.body;
     let channel;
 
@@ -57,8 +67,8 @@ router.post('/:skillId/publish', async (req, res) => {
 
     // 只有当 success 为 true 时才记录发布
     if (result.success) {
-      // 记录发布
-      await db.createPublishRecord(skill.id, channel.id);
+      // 记录发布（包含版本号）
+      await db.createPublishRecord(skill.id, channel.id, skill.version);
 
       // 更新 skill 状态
       await db.updateSkill(skill.id, { status: 'published' });
@@ -71,7 +81,7 @@ router.post('/:skillId/publish', async (req, res) => {
   }
 });
 
-// 下架 skill
+// 下架 skill（只更新状态，不删除渠道文件）
 router.post('/:skillId/unpublish', async (req, res) => {
   try {
     const skill = await db.getSkill(req.params.skillId);
@@ -87,7 +97,6 @@ router.post('/:skillId/unpublish', async (req, res) => {
       .filter(r => r.status === 'published');
 
     // Filter records by user's accessible channels
-    const isAdmin = req.user.role === 'admin';
     const accessibleRecords = [];
 
     for (const record of records) {
@@ -97,9 +106,8 @@ router.post('/:skillId/unpublish', async (req, res) => {
       }
     }
 
-    for (const { record, channel } of accessibleRecords) {
-      const publisher = createChannel(channel.type, channel.config);
-      await publisher.unpublish(skill);
+    // 只更新数据库状态，不删除渠道文件
+    for (const { record } of accessibleRecords) {
       await db.unpublishRecord(record.id);
     }
 
