@@ -12,7 +12,8 @@
 - **自定义目录**: 支持创建最多三级自定义目录，管理任意类型文件
 - **文件管理**: 支持脚本(scripts)、参考资料(references)、附件(assets)的管理
 - **AI 生成**: 一句话描述自动生成 Skill 内容和辅助文件
-- **多渠道发布**: 支持本地、远程服务器、GitHub、SSH/SFTP 四种发布渠道
+- **多渠道发布**: 支持本地、远程 API、GitLab、GitHub、SSH/SFTP 五种发布渠道
+- **安全存储**: 渠道配置中的敏感信息使用 AES-256-GCM 加密存储
 - **Markdown 预览**: 支持 SKILL.md 文件的源码和渲染预览
 
 ## 目录结构
@@ -25,9 +26,12 @@ skillhub/
 │   ├── services/          # 业务服务
 │   ├── channels/          # 发布渠道实现
 │   │   ├── local.js       # 本地发布
-│   │   ├── remote.js      # 远程服务器发布
+│   │   ├── remote.js      # 远程 API 发布
+│   │   ├── gitlab.js      # GitLab 发布
 │   │   ├── github.js      # GitHub 发布
 │   │   └── ssh.js         # SSH/SFTP 发布
+│   ├── utils/             # 工具函数
+│   │   └── encryption.js  # 加密工具
 │   ├── db/                # 数据库相关
 │   │   └── init.sql       # MySQL 表结构初始化
 │   ├── skill-creator/     # AI 生成提示词
@@ -109,6 +113,11 @@ MYSQL_DATABASE=skill_hub
 # JWT 认证密钥（必填，请使用随机字符串）
 JWT_SECRET=your-random-secret-key
 
+# 加密密钥（可选，用于加密渠道配置中的敏感信息）
+# 不配置时使用固定默认密钥，生产环境建议配置
+# 生成方式: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
 # 文件上传限制（单位：MB）
 MAX_FILE_SIZE=2      # 单个文件最大 2MB
 MAX_ZIP_SIZE=10      # ZIP 包最大 10MB
@@ -169,13 +178,16 @@ MYSQL_PASSWORD=skillhub_password     # 数据库密码
 MYSQL_ROOT_PASSWORD=root_password    # MySQL root 密码
 
 # 可选配置
+ENCRYPTION_KEY=0123456789abcdef...   # 加密密钥（32字节hex，生产环境建议配置）
 PORT=80                              # 服务端口
 AI_API_KEY=sk-xxx                    # AI 密钥
 AI_API_BASE_URL=https://api.openai.com/v1
 AI_MODEL=gpt-4o
 ```
 
-**重要**：`JWT_SECRET` 必须设置为随机字符串，否则服务无法启动。
+**重要**：
+- `JWT_SECRET` 必须设置为随机字符串，否则服务无法启动
+- `ENCRYPTION_KEY` 用于加密渠道配置中的敏感信息，不配置时使用默认密钥
 
 ### 动态设置环境变量
 
@@ -220,6 +232,7 @@ docker-compose build --no-cache
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `JWT_SECRET` | JWT 密钥（**必须修改**） | your_jwt_secret_change_this |
+| `ENCRYPTION_KEY` | 加密密钥（可选，生产环境建议配置） | 使用内置默认密钥 |
 | `MYSQL_PASSWORD` | 数据库密码 | skillhub_password |
 | `MYSQL_ROOT_PASSWORD` | MySQL root 密码 | root_password |
 | `AI_API_KEY` | AI 功能密钥（可选） | 空 |
@@ -292,6 +305,10 @@ Docker 部署使用多阶段构建：
 
 ## 发布渠道
 
+### 安全说明
+
+渠道配置中的敏感字段（token、password、privateKey、passphrase 等）会使用 AES-256-GCM 加密存储，API 返回时自动脱敏为 `******`。
+
 ### 1. 本地发布 (local)
 
 将 Skill 发布到本地目录，适合备份和离线使用。
@@ -304,21 +321,28 @@ Docker 部署使用多阶段构建：
 
 发布后的目录名为 `{技能名}@{版本号}`，包含所有文件。
 
-### 2. 远程服务器 (remote)
+### 2. GitLab 发布
 
-将 Skill 打包为 ZIP 并发送到远程服务器。
+将 Skill 发布到 GitLab 仓库，支持自托管 GitLab 实例。
 
 ```json
 {
-  "url": "https://example.com/api/skills/publish",
-  "unpublishUrl": "https://example.com/api/skills/unpublish",
-  "healthCheckUrl": "https://example.com/api/health",
-  "headers": {},
-  "timeout": 60000
+  "gitlabUrl": "https://gitlab.com",
+  "projectId": "123",
+  "branch": "main",
+  "token": "glpat-xxxx",
+  "basePath": "skills"
 }
 ```
 
-ZIP 包名为 `{技能名}@{版本号}.zip`。
+**配置说明**:
+- `gitlabUrl`: GitLab 实例地址（支持自托管，默认 https://gitlab.com）
+- `projectId`: 项目 ID 或路径（如 `123` 或 `owner/repo`）
+- `branch`: 分支名称（默认 main）
+- `token`: GitLab Personal Access Token（需要 api 权限）
+- `basePath`: 仓库中的目标路径
+
+发布后的目录名为 `{技能名}@{版本号}`。
 
 ### 3. GitHub 发布
 
@@ -370,6 +394,51 @@ ZIP 包名为 `{技能名}@{版本号}.zip`。
 - `basePath`: 服务器上存放技能的目录路径
 
 发布后的目录名为 `{技能名}@{版本号}`。
+
+### 5. 远程 API 发布 (remote)
+
+将 Skill 打包为 ZIP 并发送到远程服务器 API。
+
+```json
+{
+  "url": "https://example.com/api/skills/publish",
+  "unpublishUrl": "https://example.com/api/skills/unpublish",
+  "healthCheckUrl": "https://example.com/api/health",
+  "headers": {},
+  "timeout": 60000
+}
+```
+
+**配置说明**:
+- `url`: 发布接口地址（必填）
+- `unpublishUrl`: 下架接口地址（可选）
+- `healthCheckUrl`: 健康检查地址（可选，默认使用 url）
+- `headers`: 自定义请求头（JSON 对象）
+- `timeout`: 请求超时时间（毫秒，默认 60000）
+
+ZIP 包名为 `{技能名}@{版本号}.zip`。
+
+**远程 API 对接规范**:
+
+发布接口接收 `multipart/form-data` 格式：
+- `skill`: ZIP 文件
+- `metadata`: JSON 字符串，包含 `{id, name, description, version, category}`
+
+## 数据迁移
+
+### 渠道配置加密迁移
+
+如果已有未加密的渠道配置，需要执行迁移脚本进行加密：
+
+```bash
+# 执行迁移（加密已有渠道配置中的敏感字段）
+node server/db/migrate-encryption.js
+
+# 验证加密结果
+node server/db/migrate-encryption.js verify
+```
+
+**注意**：迁移后请确保所有实例使用相同的 `ENCRYPTION_KEY`，否则解密会失败。
 
 ## ZIP 导入
 
@@ -471,6 +540,7 @@ ZIP 包名为 `{技能名}@{版本号}.zip`。
 | PUT | `/api/channels/:id` | 更新渠道 |
 | DELETE | `/api/channels/:id` | 删除渠道 |
 | POST | `/api/channels/:id/test` | 测试渠道连接 |
+| POST | `/api/channels/test-config` | 测试渠道配置（无需保存） |
 
 ### AI 生成
 

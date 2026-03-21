@@ -4,12 +4,123 @@ import { useAuth } from '../contexts/AuthContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import './Channels.css';
 
+const REMOTE_API_DOC = `
+## 远程 API 对接文档
+
+远程 API 渠道允许将技能发布到自定义的远程服务器。
+
+### 发布接口 (POST)
+
+**请求地址**: 配置中的 \`url\` 字段
+
+**请求方式**: \`POST\`
+
+**Content-Type**: \`multipart/form-data\`
+
+**请求参数**:
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| skill | File | 技能 ZIP 压缩包，文件名格式：\`{name}@{version}.zip\` |
+| metadata | JSON String | 技能元数据，JSON 字符串格式 |
+
+**metadata 结构**:
+
+\`\`\`json
+{
+  "id": "skill-uuid",
+  "name": "技能名称",
+  "description": "技能描述",
+  "version": "1.0.0",
+  "category": "分类"
+}
+\`\`\`
+
+**响应示例**:
+
+\`\`\`json
+{
+  "success": true,
+  "message": "发布成功",
+  "data": {
+    "skillId": "xxx",
+    "url": "https://your-server.com/skills/xxx"
+  }
+}
+\`\`\`
+
+---
+
+### 下架接口 (POST)
+
+**请求地址**: 配置中的 \`unpublishUrl\` 字段（可选）
+
+**请求方式**: \`POST\`
+
+**Content-Type**: \`multipart/form-data\`
+
+**请求参数**:
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| metadata | JSON String | 技能元数据，包含 zipName 字段 |
+
+**metadata 结构**:
+
+\`\`\`json
+{
+  "id": "skill-uuid",
+  "name": "技能名称",
+  "version": "1.0.0",
+  "zipName": "skill-name@1.0.0"
+}
+\`\`\`
+
+---
+
+### 健康检查接口 (GET)
+
+**请求地址**: 配置中的 \`healthCheckUrl\` 字段（可选，默认使用 url）
+
+**请求方式**: \`GET\`
+
+**响应**: HTTP 200 表示服务正常
+
+---
+
+### 配置说明
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| url | 是 | 发布接口地址 |
+| unpublishUrl | 否 | 下架接口地址 |
+| healthCheckUrl | 否 | 健康检查地址 |
+| headers | 否 | 自定义请求头，JSON 对象格式 |
+| timeout | 否 | 请求超时时间（毫秒），默认 60000 |
+
+---
+
+### 示例配置
+
+\`\`\`json
+{
+  "url": "https://your-server.com/api/skills/publish",
+  "unpublishUrl": "https://your-server.com/api/skills/unpublish",
+  "healthCheckUrl": "https://your-server.com/api/health",
+  "headers": {
+    "Authorization": "Bearer your-token"
+  },
+  "timeout": 60000
+}
+\`\`\`
+`;
+
 const DEFAULT_CONFIGS = {
   local: '{\n  "outputDir": "./published_skills"\n}',
-  remote: '{\n  "url": "https://example.com/api/skills/publish",\n  "unpublishUrl": "https://example.com/api/skills/unpublish",\n  "healthCheckUrl": "https://example.com/api/health",\n  "headers": {},\n  "timeout": 60000\n}',
-  github: '{\n  "owner": "",\n  "repo": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}',
   gitlab: '{\n  "gitlabUrl": "https://git.kingdee.com",\n  "projectId": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}',
-  ssh: '{\n  "host": "",\n  "port": 22,\n  "username": "",\n  "password": "",\n  "privateKey": "",\n  "passphrase": "",\n  "basePath": "skills"\n}'
+  github: '{\n  "owner": "",\n  "repo": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}',
+  ssh: '{\n  "host": "",\n  "port": 22,\n  "username": "",\n  "password": "",\n  "privateKey": "",\n  "passphrase": "",\n  "basePath": "skills"\n}',
+  remote: '{\n  "url": "https://example.com/api/skills/publish",\n  "unpublishUrl": "https://example.com/api/skills/unpublish",\n  "healthCheckUrl": "https://example.com/api/health",\n  "headers": {},\n  "timeout": 60000\n}'
 };
 
 const CHANNEL_TYPE_META = {
@@ -18,15 +129,15 @@ const CHANNEL_TYPE_META = {
     hint: '发布到当前服务器目录',
     className: 'channel-type-local'
   },
-  github: {
-    label: 'GitHub',
-    hint: '同步到 GitHub 仓库',
-    className: 'channel-type-github'
-  },
   gitlab: {
     label: 'GitLab',
     hint: '同步到 GitLab 仓库',
     className: 'channel-type-gitlab'
+  },
+  github: {
+    label: 'GitHub',
+    hint: '同步到 GitHub 仓库',
+    className: 'channel-type-github'
   },
   ssh: {
     label: 'SSH',
@@ -43,8 +154,8 @@ const CHANNEL_TYPE_META = {
 function createEmptyForm() {
   return {
     name: '',
-    type: 'local',
-    config: DEFAULT_CONFIGS.local
+    type: 'gitlab',
+    config: DEFAULT_CONFIGS.gitlab
   };
 }
 
@@ -104,6 +215,26 @@ function maskSensitiveFields(config) {
   });
 
   return display;
+}
+
+function ApiDocModal({ onClose }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal channels-doc-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="channels-doc-modal-header">
+          <h3>远程 API 对接文档</h3>
+          <button type="button" className="channels-doc-close" onClick={onClose}>
+            <svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor">
+              <path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" />
+            </svg>
+          </button>
+        </div>
+        <div className="channels-doc-modal-body">
+          <pre>{REMOTE_API_DOC}</pre>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function compactConfigValue(value) {
@@ -207,7 +338,7 @@ function ModalHeader({ title, description, tag }) {
   );
 }
 
-function GitHubConfigForm({ config, onChange }) {
+function GitHubConfigForm({ config, onChange, isEdit }) {
   const update = (field, value) => {
     onChange({ ...config, [field]: value });
   };
@@ -268,13 +399,13 @@ function GitHubConfigForm({ config, onChange }) {
           value={config.token || ''}
           onChange={(event) => update('token', event.target.value)}
         />
-        <span className="channels-field-hint">需要带有 repo 权限的 Personal Access Token。</span>
+        <span className="channels-field-hint">需要带有 repo 权限的 Personal Access Token。{isEdit && config.token === '******' && '不修改请保持原样。'}</span>
       </div>
     </div>
   );
 }
 
-function GitLabConfigForm({ config, onChange }) {
+function GitLabConfigForm({ config, onChange, isEdit }) {
   const update = (field, value) => {
     onChange({ ...config, [field]: value });
   };
@@ -327,13 +458,13 @@ function GitLabConfigForm({ config, onChange }) {
           value={config.token || ''}
           onChange={(event) => update('token', event.target.value)}
         />
-        <span className="channels-field-hint">需要带有 api 权限的 Personal Access Token。</span>
+        <span className="channels-field-hint">需要带有 api 权限的 Personal Access Token。{isEdit && config.token === '******' && '不修改请保持原样。'}</span>
       </div>
     </div>
   );
 }
 
-function SSHConfigForm({ config, onChange }) {
+function SSHConfigForm({ config, onChange, isEdit }) {
   const update = (field, value) => {
     onChange({ ...config, [field]: value });
   };
@@ -385,6 +516,7 @@ function SSHConfigForm({ config, onChange }) {
           value={config.password || ''}
           onChange={(event) => update('password', event.target.value)}
         />
+        {isEdit && config.password === '******' && <span className="channels-field-hint">不修改请保持原样。</span>}
       </div>
 
       <div className="form-group">
@@ -395,6 +527,7 @@ function SSHConfigForm({ config, onChange }) {
           value={config.passphrase || ''}
           onChange={(event) => update('passphrase', event.target.value)}
         />
+        {isEdit && config.passphrase === '******' && <span className="channels-field-hint">不修改请保持原样。</span>}
       </div>
 
       <div className="form-group channels-config-span">
@@ -406,6 +539,7 @@ function SSHConfigForm({ config, onChange }) {
           rows={4}
           className="channels-code-textarea"
         />
+        {isEdit && config.privateKey === '******' && <span className="channels-field-hint">不修改请保持原样。</span>}
       </div>
     </div>
   );
@@ -426,6 +560,7 @@ export default function Channels() {
   const [confirm, setConfirm] = useState(null);
   const [keyword, setKeyword] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [showApiDoc, setShowApiDoc] = useState(false);
 
   const showError = (message) => {
     setConfirm({
@@ -444,8 +579,8 @@ export default function Channels() {
   };
 
   const resetCreateState = () => {
-    // 管理员默认 local，普通用户默认 remote
-    const defaultType = isAdmin ? 'local' : 'remote';
+    // 默认选择 gitlab
+    const defaultType = 'gitlab';
     setForm({
       name: '',
       type: defaultType,
@@ -480,7 +615,11 @@ export default function Channels() {
     try {
       const res = await channelsApi.list();
       setChannels(res.data || []);
-      setTypes(res.registeredTypes || []);
+      // 按照预定义顺序排列类型
+      const definedOrder = Object.keys(CHANNEL_TYPE_META);
+      const registeredTypes = res.registeredTypes || [];
+      const sortedTypes = definedOrder.filter((type) => registeredTypes.includes(type));
+      setTypes(sortedTypes);
     } catch (err) {
       showError('加载失败: ' + (err.response?.data?.error || err.message));
     } finally {
@@ -620,6 +759,8 @@ export default function Channels() {
         showSuccess(`连接成功，主机 ${data.host || channel.config.host}:${data.port || channel.config.port}`);
       } else if (channel?.type === 'local') {
         showSuccess(`连接成功，输出目录 ${data.outputDir || channel.config.outputDir}`);
+      } else if (channel?.type === 'remote') {
+        showSuccess(`连接成功，状态码 ${data.statusCode || 200}`);
       } else {
         showSuccess('连接测试通过。');
       }
@@ -649,6 +790,40 @@ export default function Channels() {
       const res = await channelsApi.testConfig('gitlab', gitLabConfig);
       const data = res.data || {};
       showSuccess(`连接成功，项目 ${data.projectName || gitLabConfig.projectId}，分支 ${data.branch || gitLabConfig.branch}`);
+    } catch (err) {
+      showError('连接失败: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleTestGitHubConfig = async () => {
+    setTesting(true);
+
+    try {
+      const res = await channelsApi.testConfig('github', gitHubConfig);
+      const data = res.data || {};
+      showSuccess(`连接成功，仓库 ${data.repo || `${gitHubConfig.owner}/${gitHubConfig.repo}`}，分支 ${data.branch || gitHubConfig.branch}`);
+    } catch (err) {
+      showError('连接失败: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleTestRemoteConfig = async () => {
+    setTesting(true);
+
+    try {
+      const config = JSON.parse(form.config);
+      if (!config.url) {
+        showError('请配置发布接口地址 url');
+        setTesting(false);
+        return;
+      }
+      const res = await channelsApi.testConfig('remote', config);
+      const data = res.data || {};
+      showSuccess(`连接成功，状态码 ${data.statusCode || 200}`);
     } catch (err) {
       showError('连接失败: ' + (err.response?.data?.error || err.message));
     } finally {
@@ -744,7 +919,7 @@ export default function Channels() {
                 onChange={(event) => setTypeFilter(event.target.value)}
               >
                 <option value="all">全部类型</option>
-                {[...new Set(channels.map((channel) => channel.type))].map((type) => (
+                {Object.keys(CHANNEL_TYPE_META).filter((type) => channels.some((channel) => channel.type === type)).map((type) => (
                   <option key={type} value={type}>{getChannelTypeMeta(type).label}</option>
                 ))}
               </select>
@@ -893,17 +1068,29 @@ export default function Channels() {
               </div>
 
               {form.type === 'github' ? (
-                <GitHubConfigForm config={gitHubConfig} onChange={setGitHubConfig} />
+                <GitHubConfigForm config={gitHubConfig} onChange={setGitHubConfig} isEdit={false} />
               ) : form.type === 'gitlab' ? (
-                <GitLabConfigForm config={gitLabConfig} onChange={setGitLabConfig} />
+                <GitLabConfigForm config={gitLabConfig} onChange={setGitLabConfig} isEdit={false} />
               ) : form.type === 'ssh' ? (
                 <SSHConfigForm
                   config={sshConfig}
                   onChange={setSshConfig}
+                  isEdit={false}
                 />
               ) : (
                 <div className="form-group">
-                  <label>配置 JSON</label>
+                  <div className="channels-config-label-row">
+                    <label>配置 JSON</label>
+                    {form.type === 'remote' && (
+                      <button
+                        type="button"
+                        className="channels-doc-link"
+                        onClick={() => setShowApiDoc(true)}
+                      >
+                        查看对接文档
+                      </button>
+                    )}
+                  </div>
                   <textarea
                     value={form.config}
                     onChange={(event) => setForm({ ...form, config: event.target.value })}
@@ -913,7 +1100,7 @@ export default function Channels() {
                 </div>
               )}
 
-              {form.type === 'ssh' || form.type === 'gitlab' ? (
+              {form.type === 'ssh' || form.type === 'gitlab' || form.type === 'github' || form.type === 'remote' ? (
                 <div className="channels-modal-actions channels-modal-actions-split">
                   <div className="channels-modal-actions-left">
                     {form.type === 'ssh' ? (
@@ -925,12 +1112,30 @@ export default function Channels() {
                       >
                         {testing ? '测试中...' : '测试连接'}
                       </button>
-                    ) : (
+                    ) : form.type === 'gitlab' ? (
                       <button
                         type="button"
                         className="btn btn-default"
                         onClick={handleTestGitLabConfig}
                         disabled={testing || !gitLabConfig.projectId || !gitLabConfig.token}
+                      >
+                        {testing ? '测试中...' : '测试连接'}
+                      </button>
+                    ) : form.type === 'github' ? (
+                      <button
+                        type="button"
+                        className="btn btn-default"
+                        onClick={handleTestGitHubConfig}
+                        disabled={testing || !gitHubConfig.owner || !gitHubConfig.repo || !gitHubConfig.token}
+                      >
+                        {testing ? '测试中...' : '测试连接'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-default"
+                        onClick={handleTestRemoteConfig}
+                        disabled={testing || !form.config}
                       >
                         {testing ? '测试中...' : '测试连接'}
                       </button>
@@ -979,17 +1184,29 @@ export default function Channels() {
               </div>
 
               {form.type === 'github' ? (
-                <GitHubConfigForm config={gitHubConfig} onChange={setGitHubConfig} />
+                <GitHubConfigForm config={gitHubConfig} onChange={setGitHubConfig} isEdit />
               ) : form.type === 'gitlab' ? (
-                <GitLabConfigForm config={gitLabConfig} onChange={setGitLabConfig} />
+                <GitLabConfigForm config={gitLabConfig} onChange={setGitLabConfig} isEdit />
               ) : form.type === 'ssh' ? (
                 <SSHConfigForm
                   config={sshConfig}
                   onChange={setSshConfig}
+                  isEdit
                 />
               ) : (
                 <div className="form-group">
-                  <label>配置 JSON</label>
+                  <div className="channels-config-label-row">
+                    <label>配置 JSON</label>
+                    {form.type === 'remote' && (
+                      <button
+                        type="button"
+                        className="channels-doc-link"
+                        onClick={() => setShowApiDoc(true)}
+                      >
+                        查看对接文档
+                      </button>
+                    )}
+                  </div>
                   <textarea
                     value={form.config}
                     onChange={(event) => setForm({ ...form, config: event.target.value })}
@@ -999,7 +1216,7 @@ export default function Channels() {
                 </div>
               )}
 
-              {form.type === 'ssh' || form.type === 'gitlab' ? (
+              {form.type === 'ssh' || form.type === 'gitlab' || form.type === 'github' || form.type === 'remote' ? (
                 <div className="channels-modal-actions channels-modal-actions-split">
                   <div className="channels-modal-actions-left">
                     {form.type === 'ssh' ? (
@@ -1011,12 +1228,30 @@ export default function Channels() {
                       >
                         {testing ? '测试中...' : '测试连接'}
                       </button>
-                    ) : (
+                    ) : form.type === 'gitlab' ? (
                       <button
                         type="button"
                         className="btn btn-default"
                         onClick={handleTestGitLabConfig}
                         disabled={testing || !gitLabConfig.projectId || !gitLabConfig.token}
+                      >
+                        {testing ? '测试中...' : '测试连接'}
+                      </button>
+                    ) : form.type === 'github' ? (
+                      <button
+                        type="button"
+                        className="btn btn-default"
+                        onClick={handleTestGitHubConfig}
+                        disabled={testing || !gitHubConfig.owner || !gitHubConfig.repo || !gitHubConfig.token}
+                      >
+                        {testing ? '测试中...' : '测试连接'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-default"
+                        onClick={handleTestRemoteConfig}
+                        disabled={testing || !form.config}
                       >
                         {testing ? '测试中...' : '测试连接'}
                       </button>
@@ -1045,6 +1280,10 @@ export default function Channels() {
           onCancel={() => setConfirm(null)}
           type={confirm.type}
         />
+      ) : null}
+
+      {showApiDoc ? (
+        <ApiDocModal onClose={() => setShowApiDoc(false)} />
       ) : null}
     </div>
   );

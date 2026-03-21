@@ -17,6 +17,42 @@ function canAccessChannel(user, channel) {
   return channel.created_by === user.id;
 }
 
+// 敏感字段列表
+const SENSITIVE_FIELDS = ['token', 'password', 'privateKey', 'passphrase', 'secret', 'apiKey', 'api_key'];
+
+/**
+ * 对配置中的敏感字段进行脱敏
+ * @param {object} config - 配置对象
+ * @returns {object} - 脱敏后的配置对象
+ */
+function maskSensitiveFields(config) {
+  if (!config || typeof config !== 'object') {
+    return config;
+  }
+
+  const masked = { ...config };
+
+  // 脱敏敏感字段
+  for (const field of SENSITIVE_FIELDS) {
+    if (masked[field]) {
+      masked[field] = '******';
+    }
+  }
+
+  // 特殊处理 headers 中的敏感信息
+  if (masked.headers && typeof masked.headers === 'object') {
+    masked.headers = { ...masked.headers };
+    for (const [key, value] of Object.entries(masked.headers)) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey.includes('auth') || lowerKey.includes('token') || lowerKey.includes('key') || lowerKey.includes('secret') || lowerKey.includes('password')) {
+        masked.headers[key] = '******';
+      }
+    }
+  }
+
+  return masked;
+}
+
 // 获取渠道列表
 router.get('/', async (req, res) => {
   try {
@@ -24,10 +60,10 @@ router.get('/', async (req, res) => {
     const isAdmin = user.role === 'admin';
     const channels = await db.listChannels(user.id, isAdmin);
 
-    // 对非自己的渠道，整个 config 脱敏
+    // 对配置中的敏感字段进行脱敏
     const maskedChannels = channels.map(ch => ({
       ...ch,
-      config: ch.created_by === user.id ? ch.config : null
+      config: maskSensitiveFields(ch.config)
     }));
 
     res.json({ data: maskedChannels, registeredTypes: getRegisteredTypes() });
@@ -97,7 +133,8 @@ router.post('/', async (req, res) => {
       enabled: enabled ?? false
     }, req.user.id);
 
-    res.status(201).json({ data: channel });
+    // 返回时脱敏敏感字段
+    res.status(201).json({ data: { ...channel, config: maskSensitiveFields(channel.config) } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -160,7 +197,8 @@ router.put('/:id', async (req, res) => {
 
     const updated = await db.updateChannel(req.params.id, updateData);
 
-    res.json({ data: updated });
+    // 返回时脱敏敏感字段
+    res.json({ data: { ...updated, config: maskSensitiveFields(updated.config) } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

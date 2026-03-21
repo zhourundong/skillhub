@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const mysql = require('mysql2/promise');
 const { v4: uuidv4 } = require('uuid');
+const { encryptConfig, decryptConfig } = require('./utils/encryption');
 
 // Table names with prefix
 const TABLES = {
@@ -602,12 +603,15 @@ const db = {
     }
 
     const [rows] = await pool.execute(query, params);
-    return rows.map(row => ({
-      ...row,
-      config: typeof row.config === 'string' ? JSON.parse(row.config) : row.config,
-      isDefault: !!row.is_default,
-      createdByName: row.created_by_name || row.created_by_username || null
-    }));
+    return rows.map(row => {
+      const config = typeof row.config === 'string' ? JSON.parse(row.config) : row.config;
+      return {
+        ...row,
+        config: decryptConfig(config, row.type),
+        isDefault: !!row.is_default,
+        createdByName: row.created_by_name || row.created_by_username || null
+      };
+    });
   },
 
   async getChannel(id) {
@@ -617,9 +621,10 @@ const db = {
       [id]
     );
     if (!rows[0]) return null;
+    const config = typeof rows[0].config === 'string' ? JSON.parse(rows[0].config) : rows[0].config;
     return {
       ...rows[0],
-      config: typeof rows[0].config === 'string' ? JSON.parse(rows[0].config) : rows[0].config,
+      config: decryptConfig(config, rows[0].type),
       isDefault: !!rows[0].is_default
     };
   },
@@ -631,9 +636,10 @@ const db = {
       [name]
     );
     if (!rows[0]) return null;
+    const config = typeof rows[0].config === 'string' ? JSON.parse(rows[0].config) : rows[0].config;
     return {
       ...rows[0],
-      config: typeof rows[0].config === 'string' ? JSON.parse(rows[0].config) : rows[0].config,
+      config: decryptConfig(config, rows[0].type),
       isDefault: !!rows[0].is_default
     };
   },
@@ -645,9 +651,10 @@ const db = {
       [type]
     );
     if (!rows[0]) return null;
+    const config = typeof rows[0].config === 'string' ? JSON.parse(rows[0].config) : rows[0].config;
     return {
       ...rows[0],
-      config: typeof rows[0].config === 'string' ? JSON.parse(rows[0].config) : rows[0].config,
+      config: decryptConfig(config, rows[0].type),
       isDefault: !!rows[0].is_default
     };
   },
@@ -659,9 +666,10 @@ const db = {
       `SELECT * FROM ${TABLES.channels} WHERE is_default = TRUE AND enabled = TRUE`
     );
     if (defaultRows[0]) {
+      const config = typeof defaultRows[0].config === 'string' ? JSON.parse(defaultRows[0].config) : defaultRows[0].config;
       return {
         ...defaultRows[0],
-        config: typeof defaultRows[0].config === 'string' ? JSON.parse(defaultRows[0].config) : defaultRows[0].config,
+        config: decryptConfig(config, defaultRows[0].type),
         isDefault: true
       };
     }
@@ -670,9 +678,10 @@ const db = {
       `SELECT * FROM ${TABLES.channels} WHERE enabled = TRUE ORDER BY created_at ASC LIMIT 1`
     );
     if (!enabledRows[0]) return null;
+    const config = typeof enabledRows[0].config === 'string' ? JSON.parse(enabledRows[0].config) : enabledRows[0].config;
     return {
       ...enabledRows[0],
-      config: typeof enabledRows[0].config === 'string' ? JSON.parse(enabledRows[0].config) : enabledRows[0].config,
+      config: decryptConfig(config, enabledRows[0].type),
       isDefault: !!enabledRows[0].is_default
     };
   },
@@ -682,6 +691,9 @@ const db = {
     const id = uuidv4();
     const now = new Date();
 
+    // 加密敏感字段
+    const encryptedConfig = encryptConfig(data.config || {}, data.type);
+
     await pool.execute(
       `INSERT INTO ${TABLES.channels} (id, name, type, config, enabled, is_default, created_by, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -689,7 +701,7 @@ const db = {
         id,
         data.name,
         data.type,
-        JSON.stringify(data.config || {}),
+        JSON.stringify(encryptedConfig),
         data.enabled ? 1 : 0,
         0,
         createdBy,
@@ -717,8 +729,30 @@ const db = {
       params.push(data.type);
     }
     if (data.config !== undefined) {
+      // 处理脱敏值：如果敏感字段值为 ******，则保留原值
+      const mergedConfig = { ...data.config };
+      const sensitiveFields = ['token', 'password', 'privateKey', 'passphrase', 'secret', 'apiKey', 'api_key'];
+
+      for (const field of sensitiveFields) {
+        if (mergedConfig[field] === '******') {
+          // 保留原值
+          mergedConfig[field] = channel.config[field] || '';
+        }
+      }
+
+      // 处理 headers 中的脱敏值
+      if (mergedConfig.headers && channel.config.headers) {
+        for (const [key, value] of Object.entries(mergedConfig.headers)) {
+          if (value === '******' && channel.config.headers[key]) {
+            mergedConfig.headers[key] = channel.config.headers[key];
+          }
+        }
+      }
+
+      // 加密敏感字段
+      const encryptedConfig = encryptConfig(mergedConfig, data.type || channel.type);
       updates.push('config = ?');
-      params.push(JSON.stringify(data.config));
+      params.push(JSON.stringify(encryptedConfig));
     }
     if (data.enabled !== undefined) {
       updates.push('enabled = ?');

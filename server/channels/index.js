@@ -1,8 +1,8 @@
 const LocalChannel = require('./local');
-const RemoteChannel = require('./remote');
-const GitHubChannel = require('./github');
 const GitLabChannel = require('./gitlab');
+const GitHubChannel = require('./github');
 const SshChannel = require('./ssh');
+const RemoteChannel = require('./remote');
 
 /**
  * 渠道注册表 - 新增渠道只需在此注册
@@ -11,10 +11,10 @@ const SshChannel = require('./ssh');
  */
 const channelRegistry = {
   local: LocalChannel,
-  remote: RemoteChannel,
-  github: GitHubChannel,
   gitlab: GitLabChannel,
+  github: GitHubChannel,
   ssh: SshChannel,
+  remote: RemoteChannel,
 };
 
 function createChannel(type, config) {
