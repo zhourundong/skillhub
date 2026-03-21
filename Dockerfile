@@ -40,9 +40,11 @@ COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh
 
-# 创建必要的目录
-RUN mkdir -p /app/skills /app/data /app/logs /run/nginx && \
-    chown -R nodejs:nodejs /app/skills /app/data /app/logs /run/nginx
+# 创建必要的目录并修复 nginx 权限
+RUN mkdir -p /app/skills /app/data /app/logs /app/published_skills /run/nginx && \
+    mkdir -p /var/lib/nginx/tmp /var/lib/nginx/logs /var/log/nginx && \
+    chown -R nodejs:nodejs /app/skills /app/data /app/logs /app/published_skills /run/nginx && \
+    chown -R nodejs:nodejs /var/lib/nginx /var/log/nginx
 
 # 声明数据卷
 VOLUME ["/app/skills", "/app/data", "/app/logs"]
@@ -53,9 +55,6 @@ EXPOSE 80
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD wget -q --spider http://localhost/api/health || exit 1
-
-# 切换非 root 用户
-USER nodejs
 
 # 设置环境变量
 ENV NODE_ENV=production

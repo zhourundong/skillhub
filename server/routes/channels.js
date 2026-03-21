@@ -232,7 +232,7 @@ router.post('/:id/test', async (req, res) => {
 // 测试渠道配置（无需保存，用于创建前测试）
 router.post('/test-config', async (req, res) => {
   try {
-    const { type, config } = req.body;
+    const { type, config, channelId } = req.body;
     if (!type) return res.status(400).json({ error: '渠道类型不能为空' });
 
     const registered = getRegisteredTypes();
@@ -240,7 +240,31 @@ router.post('/test-config', async (req, res) => {
       return res.status(400).json({ error: `不支持的渠道类型: ${type}` });
     }
 
-    const publisher = createChannel(type, config || {});
+    let testConfig = config || {};
+
+    // 如果提供了 channelId 且配置中有脱敏值，使用数据库中的真实值
+    if (channelId) {
+      const channel = await db.getChannel(channelId);
+      if (channel && canAccessChannel(req.user, channel)) {
+        // 合并配置，脱敏值使用数据库中的真实值
+        const dbConfig = channel.config || {};
+        for (const field of SENSITIVE_FIELDS) {
+          if (testConfig[field] === '******' && dbConfig[field]) {
+            testConfig[field] = dbConfig[field];
+          }
+        }
+        // 处理 headers 中的脱敏值
+        if (testConfig.headers && dbConfig.headers) {
+          for (const [key, value] of Object.entries(testConfig.headers)) {
+            if (value === '******' && dbConfig.headers[key]) {
+              testConfig.headers[key] = dbConfig.headers[key];
+            }
+          }
+        }
+      }
+    }
+
+    const publisher = createChannel(type, testConfig);
     const result = await publisher.healthCheck();
 
     // 如果健康检查失败，返回错误状态

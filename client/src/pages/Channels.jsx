@@ -773,7 +773,7 @@ export default function Channels() {
     setTesting(true);
 
     try {
-      const res = await channelsApi.testConfig('ssh', sshConfig);
+      const res = await channelsApi.testConfig('ssh', sshConfig, editingId || null);
       const data = res.data || {};
       showSuccess(`连接成功，主机 ${data.host || sshConfig.host}:${data.port || sshConfig.port}`);
     } catch (err) {
@@ -787,7 +787,7 @@ export default function Channels() {
     setTesting(true);
 
     try {
-      const res = await channelsApi.testConfig('gitlab', gitLabConfig);
+      const res = await channelsApi.testConfig('gitlab', gitLabConfig, editingId || null);
       const data = res.data || {};
       showSuccess(`连接成功，项目 ${data.projectName || gitLabConfig.projectId}，分支 ${data.branch || gitLabConfig.branch}`);
     } catch (err) {
@@ -801,7 +801,7 @@ export default function Channels() {
     setTesting(true);
 
     try {
-      const res = await channelsApi.testConfig('github', gitHubConfig);
+      const res = await channelsApi.testConfig('github', gitHubConfig, editingId || null);
       const data = res.data || {};
       showSuccess(`连接成功，仓库 ${data.repo || `${gitHubConfig.owner}/${gitHubConfig.repo}`}，分支 ${data.branch || gitHubConfig.branch}`);
     } catch (err) {
@@ -821,7 +821,7 @@ export default function Channels() {
         setTesting(false);
         return;
       }
-      const res = await channelsApi.testConfig('remote', config);
+      const res = await channelsApi.testConfig('remote', config, editingId || null);
       const data = res.data || {};
       showSuccess(`连接成功，状态码 ${data.statusCode || 200}`);
     } catch (err) {

@@ -111,5 +111,5 @@ export const channelsApi = {
   update: (id, data) => api.put(`/channels/${id}`, data).then(r => r.data),
   delete: (id) => api.delete(`/channels/${id}`).then(r => r.data),
   test: (id) => api.post(`/channels/${id}/test`).then(r => r.data),
-  testConfig: (type, config) => api.post('/channels/test-config', { type, config }).then(r => r.data),
+  testConfig: (type, config, channelId) => api.post('/channels/test-config', { type, config, channelId }).then(r => r.data),
 };
