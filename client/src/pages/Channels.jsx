@@ -8,6 +8,7 @@ const DEFAULT_CONFIGS = {
   local: '{\n  "outputDir": "./published_skills"\n}',
   remote: '{\n  "url": "https://example.com/api/skills/publish",\n  "unpublishUrl": "https://example.com/api/skills/unpublish",\n  "healthCheckUrl": "https://example.com/api/health",\n  "headers": {},\n  "timeout": 60000\n}',
   github: '{\n  "owner": "",\n  "repo": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}',
+  gitlab: '{\n  "gitlabUrl": "https://git.kingdee.com",\n  "projectId": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}',
   ssh: '{\n  "host": "",\n  "port": 22,\n  "username": "",\n  "password": "",\n  "privateKey": "",\n  "passphrase": "",\n  "basePath": "skills"\n}'
 };
 
@@ -21,6 +22,11 @@ const CHANNEL_TYPE_META = {
     label: 'GitHub',
     hint: '同步到 GitHub 仓库',
     className: 'channel-type-github'
+  },
+  gitlab: {
+    label: 'GitLab',
+    hint: '同步到 GitLab 仓库',
+    className: 'channel-type-gitlab'
   },
   ssh: {
     label: 'SSH',
@@ -50,6 +56,16 @@ function createEmptyGitHubConfig() {
     token: '',
     basePath: 'skills',
     repoUrl: ''
+  };
+}
+
+function createEmptyGitLabConfig() {
+  return {
+    gitlabUrl: 'https://git.kingdee.com',
+    projectId: '',
+    branch: 'main',
+    token: '',
+    basePath: 'skills'
   };
 }
 
@@ -131,6 +147,14 @@ function getChannelConfigItems(channel) {
         { label: '目录', value: compactConfigValue(config.basePath) },
         { label: 'Token', value: config.token ? '已配置' : '未设置' }
       ];
+    case 'gitlab':
+      return [
+        { label: 'GitLab URL', value: compactConfigValue(config.gitlabUrl || 'https://git.kingdee.com') },
+        { label: '项目', value: compactConfigValue(config.projectId) },
+        { label: '分支', value: compactConfigValue(config.branch || 'main') },
+        { label: '目录', value: compactConfigValue(config.basePath) },
+        { label: 'Token', value: config.token ? '已配置' : '未设置' }
+      ];
     case 'ssh':
       return [
         { label: '主机', value: config.host ? `${config.host}:${config.port || 22}` : '未设置' },
@@ -162,6 +186,8 @@ function getChannelSummary(channel) {
       return config.outputDir || '未设置输出目录';
     case 'github':
       return config.repoUrl || [config.owner, config.repo].filter(Boolean).join('/') || '未设置仓库';
+    case 'gitlab':
+      return config.projectId || '未设置项目';
     case 'ssh':
       return config.host ? `${config.host}:${config.port || 22}` : '未设置 SSH 主机';
     case 'remote':
@@ -243,6 +269,65 @@ function GitHubConfigForm({ config, onChange }) {
           onChange={(event) => update('token', event.target.value)}
         />
         <span className="channels-field-hint">需要带有 repo 权限的 Personal Access Token。</span>
+      </div>
+    </div>
+  );
+}
+
+function GitLabConfigForm({ config, onChange }) {
+  const update = (field, value) => {
+    onChange({ ...config, [field]: value });
+  };
+
+  return (
+    <div className="channels-config-grid">
+      <div className="form-group channels-config-span">
+        <label>GitLab 实例地址</label>
+        <input
+          placeholder="https://git.kingdee.com"
+          value={config.gitlabUrl || 'https://git.kingdee.com'}
+          onChange={(event) => update('gitlabUrl', event.target.value)}
+        />
+        <span className="channels-field-hint">支持自托管 GitLab，填写完整地址。</span>
+      </div>
+
+      <div className="form-group channels-config-span">
+        <label>项目 ID 或路径</label>
+        <input
+          placeholder="例如：123 或 owner/repo"
+          value={config.projectId || ''}
+          onChange={(event) => update('projectId', event.target.value)}
+        />
+        <span className="channels-field-hint">支持项目 ID（数字）或 URL-encoded 路径（owner/repo）。</span>
+      </div>
+
+      <div className="form-group">
+        <label>分支</label>
+        <input
+          placeholder="main"
+          value={config.branch || 'main'}
+          onChange={(event) => update('branch', event.target.value)}
+        />
+      </div>
+
+      <div className="form-group">
+        <label>目标路径</label>
+        <input
+          placeholder="skills"
+          value={config.basePath || ''}
+          onChange={(event) => update('basePath', event.target.value)}
+        />
+      </div>
+
+      <div className="form-group channels-config-span">
+        <label>GitLab Token</label>
+        <input
+          type="password"
+          placeholder="glpat-xxxx 或私钥"
+          value={config.token || ''}
+          onChange={(event) => update('token', event.target.value)}
+        />
+        <span className="channels-field-hint">需要带有 api 权限的 Personal Access Token。</span>
       </div>
     </div>
   );
@@ -335,6 +420,7 @@ export default function Channels() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(createEmptyForm());
   const [gitHubConfig, setGitHubConfig] = useState(createEmptyGitHubConfig());
+  const [gitLabConfig, setGitLabConfig] = useState(createEmptyGitLabConfig());
   const [sshConfig, setSshConfig] = useState(createEmptySshConfig());
   const [testing, setTesting] = useState(false);
   const [confirm, setConfirm] = useState(null);
@@ -366,6 +452,7 @@ export default function Channels() {
       config: DEFAULT_CONFIGS[defaultType] || '{}'
     });
     setGitHubConfig(createEmptyGitHubConfig());
+    setGitLabConfig(createEmptyGitLabConfig());
     setSshConfig(createEmptySshConfig());
     setTesting(false);
     setShowForm(true); // 显示新建表单
@@ -375,6 +462,7 @@ export default function Channels() {
     setShowForm(false);
     setForm(createEmptyForm());
     setGitHubConfig(createEmptyGitHubConfig());
+    setGitLabConfig(createEmptyGitLabConfig());
     setSshConfig(createEmptySshConfig());
     setTesting(false);
   };
@@ -383,6 +471,7 @@ export default function Channels() {
     setEditingId(null);
     setForm(createEmptyForm());
     setGitHubConfig(createEmptyGitHubConfig());
+    setGitLabConfig(createEmptyGitLabConfig());
     setSshConfig(createEmptySshConfig());
     setTesting(false);
   };
@@ -437,6 +526,8 @@ export default function Channels() {
 
       if (form.type === 'github') {
         config = gitHubConfig;
+      } else if (form.type === 'gitlab') {
+        config = gitLabConfig;
       } else if (form.type === 'ssh') {
         config = sshConfig;
       } else {
@@ -469,6 +560,14 @@ export default function Channels() {
         basePath: channel.config.basePath ?? '',
         repoUrl: channel.config.repoUrl || ''
       });
+    } else if (channel.type === 'gitlab') {
+      setGitLabConfig({
+        gitlabUrl: channel.config.gitlabUrl || 'https://git.kingdee.com',
+        projectId: channel.config.projectId || '',
+        branch: channel.config.branch || 'main',
+        token: channel.config.token || '',
+        basePath: channel.config.basePath ?? ''
+      });
     } else if (channel.type === 'ssh') {
       setSshConfig({
         host: channel.config.host || '',
@@ -490,6 +589,8 @@ export default function Channels() {
 
       if (form.type === 'github') {
         config = gitHubConfig;
+      } else if (form.type === 'gitlab') {
+        config = gitLabConfig;
       } else if (form.type === 'ssh') {
         config = sshConfig;
       } else {
@@ -513,6 +614,8 @@ export default function Channels() {
 
       if (channel?.type === 'github') {
         showSuccess(`连接成功，仓库 ${data.repo || `${channel.config.owner}/${channel.config.repo}`}，分支 ${data.branch || channel.config.branch}`);
+      } else if (channel?.type === 'gitlab') {
+        showSuccess(`连接成功，项目 ${data.projectName || channel.config.projectId}，分支 ${data.branch || channel.config.branch}`);
       } else if (channel?.type === 'ssh') {
         showSuccess(`连接成功，主机 ${data.host || channel.config.host}:${data.port || channel.config.port}`);
       } else if (channel?.type === 'local') {
@@ -532,6 +635,20 @@ export default function Channels() {
       const res = await channelsApi.testConfig('ssh', sshConfig);
       const data = res.data || {};
       showSuccess(`连接成功，主机 ${data.host || sshConfig.host}:${data.port || sshConfig.port}`);
+    } catch (err) {
+      showError('连接失败: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleTestGitLabConfig = async () => {
+    setTesting(true);
+
+    try {
+      const res = await channelsApi.testConfig('gitlab', gitLabConfig);
+      const data = res.data || {};
+      showSuccess(`连接成功，项目 ${data.projectName || gitLabConfig.projectId}，分支 ${data.branch || gitLabConfig.branch}`);
     } catch (err) {
       showError('连接失败: ' + (err.response?.data?.error || err.message));
     } finally {
@@ -584,6 +701,8 @@ export default function Channels() {
 
     if (type === 'github') {
       setGitHubConfig(createEmptyGitHubConfig());
+    } else if (type === 'gitlab') {
+      setGitLabConfig(createEmptyGitLabConfig());
     } else if (type === 'ssh') {
       setSshConfig(createEmptySshConfig());
     }
@@ -775,6 +894,8 @@ export default function Channels() {
 
               {form.type === 'github' ? (
                 <GitHubConfigForm config={gitHubConfig} onChange={setGitHubConfig} />
+              ) : form.type === 'gitlab' ? (
+                <GitLabConfigForm config={gitLabConfig} onChange={setGitLabConfig} />
               ) : form.type === 'ssh' ? (
                 <SSHConfigForm
                   config={sshConfig}
@@ -792,17 +913,28 @@ export default function Channels() {
                 </div>
               )}
 
-              {form.type === 'ssh' ? (
+              {form.type === 'ssh' || form.type === 'gitlab' ? (
                 <div className="channels-modal-actions channels-modal-actions-split">
                   <div className="channels-modal-actions-left">
-                    <button
-                      type="button"
-                      className="btn btn-default"
-                      onClick={handleTestSshConfig}
-                      disabled={testing || !sshConfig.host || !sshConfig.username || (!sshConfig.password && !sshConfig.privateKey)}
-                    >
-                      {testing ? '测试中...' : '测试连接'}
-                    </button>
+                    {form.type === 'ssh' ? (
+                      <button
+                        type="button"
+                        className="btn btn-default"
+                        onClick={handleTestSshConfig}
+                        disabled={testing || !sshConfig.host || !sshConfig.username || (!sshConfig.password && !sshConfig.privateKey)}
+                      >
+                        {testing ? '测试中...' : '测试连接'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-default"
+                        onClick={handleTestGitLabConfig}
+                        disabled={testing || !gitLabConfig.projectId || !gitLabConfig.token}
+                      >
+                        {testing ? '测试中...' : '测试连接'}
+                      </button>
+                    )}
                   </div>
                   <div className="channels-modal-actions-right">
                     <button type="button" className="btn btn-default" onClick={cancelCreate}>取消</button>
@@ -848,6 +980,8 @@ export default function Channels() {
 
               {form.type === 'github' ? (
                 <GitHubConfigForm config={gitHubConfig} onChange={setGitHubConfig} />
+              ) : form.type === 'gitlab' ? (
+                <GitLabConfigForm config={gitLabConfig} onChange={setGitLabConfig} />
               ) : form.type === 'ssh' ? (
                 <SSHConfigForm
                   config={sshConfig}
@@ -865,17 +999,28 @@ export default function Channels() {
                 </div>
               )}
 
-              {form.type === 'ssh' ? (
+              {form.type === 'ssh' || form.type === 'gitlab' ? (
                 <div className="channels-modal-actions channels-modal-actions-split">
                   <div className="channels-modal-actions-left">
-                    <button
-                      type="button"
-                      className="btn btn-default"
-                      onClick={handleTestSshConfig}
-                      disabled={testing || !sshConfig.host || !sshConfig.username || (!sshConfig.password && !sshConfig.privateKey)}
-                    >
-                      {testing ? '测试中...' : '测试连接'}
-                    </button>
+                    {form.type === 'ssh' ? (
+                      <button
+                        type="button"
+                        className="btn btn-default"
+                        onClick={handleTestSshConfig}
+                        disabled={testing || !sshConfig.host || !sshConfig.username || (!sshConfig.password && !sshConfig.privateKey)}
+                      >
+                        {testing ? '测试中...' : '测试连接'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-default"
+                        onClick={handleTestGitLabConfig}
+                        disabled={testing || !gitLabConfig.projectId || !gitLabConfig.token}
+                      >
+                        {testing ? '测试中...' : '测试连接'}
+                      </button>
+                    )}
                   </div>
                   <div className="channels-modal-actions-right">
                     <button type="button" className="btn btn-default" onClick={resetEditState}>取消</button>

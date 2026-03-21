@@ -1,6 +1,7 @@
 const LocalChannel = require('./local');
 const RemoteChannel = require('./remote');
 const GitHubChannel = require('./github');
+const GitLabChannel = require('./gitlab');
 const SshChannel = require('./ssh');
 
 /**
@@ -12,6 +13,7 @@ const channelRegistry = {
   local: LocalChannel,
   remote: RemoteChannel,
   github: GitHubChannel,
+  gitlab: GitLabChannel,
   ssh: SshChannel,
 };
 
