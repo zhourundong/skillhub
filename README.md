@@ -1,78 +1,53 @@
-# SkillHub
+<p align="center">
+  <img src="client/public/favicon.svg" width="80" height="80" alt="SkillHub Logo">
+</p>
 
-一个用于管理和发布 Skill 的 Web 应用，支持 AI 自动生成、多渠道发布、ZIP 导入导出等功能。
+<h1 align="center">SkillHub</h1>
+
+<p align="center">
+  <strong>AI Skill 管理与发布平台</strong><br>
+  创建、管理、发布结构化 AI Skill 文档，支持 AI 一键生成与多渠道分发
+</p>
+
+<p align="center">
+  <a href="#快速开始">快速开始</a> •
+  <a href="#功能特性">功能特性</a> •
+  <a href="#docker-部署">Docker 部署</a> •
+  <a href="#发布渠道">发布渠道</a> •
+  <a href="#api-文档">API 文档</a>
+</p>
+
+---
+
+## 什么是 SkillHub？
+
+SkillHub 是一个用于管理 AI "Skill"（结构化 Markdown 文档 + 元数据）的 Web 平台。你可以把它理解为 AI 技能的 CMS —— 创建、编辑、版本管理，然后一键发布到 GitHub、GitLab、SSH 服务器等多种渠道。
+
+核心场景：
+- 团队协作管理大量 AI Prompt / Skill 文档
+- 通过 AI 辅助快速生成高质量 Skill
+- 统一发布到多个目标平台，保持版本一致性
 
 ## 功能特性
 
-- **用户认证**: JWT 登录认证，支持管理员和普通用户两种角色
-- **用户管理**: 管理员可创建、编辑、删除用户，重置密码
-- **Skill 管理**: 创建、编辑、删除、搜索 Skill
-- **分页显示**: 支持 10/50/100 条每页的分页浏览
-- **ZIP 导入导出**: 一键导入/导出完整的 Skill 包
-- **自定义目录**: 支持创建最多三级自定义目录，管理任意类型文件
-- **文件管理**: 支持脚本(scripts)、参考资料(references)、附件(assets)的管理
-- **AI 生成**: 一句话描述自动生成 Skill 内容和辅助文件
-- **多渠道发布**: 支持本地、远程 API、GitLab、GitHub、SSH/SFTP 五种发布渠道
-- **安全存储**: 渠道配置中的敏感信息使用 AES-256-GCM 加密存储
-- **Markdown 预览**: 支持 SKILL.md 文件的源码和渲染预览
+- **Skill 管理** — 创建、编辑、搜索、分页浏览，支持 ZIP 导入导出
+- **AI 生成** — 一句话描述，自动生成 Skill 内容和辅助文件（SSE 流式输出）
+- **多渠道发布** — 本地 / 远程 API / GitLab / GitHub / SSH(SFTP)，五种渠道开箱即用
+- **文件管理** — 脚本、参考资料、附件，支持自定义目录（最多三级）
+- **用户认证** — JWT 认证，管理员 / 普通用户两种角色
+- **安全存储** — 渠道敏感信息使用 AES-256-GCM 加密
+- **Markdown 预览** — SKILL.md 源码与渲染双视图
+- **子路径部署** — 支持 `BASE_URL` 配置，可部署在反向代理子路径下
 
-## 目录结构
+## 技术栈
 
-```
-skillhub/
-├── client/                 # 前端项目 (React + Vite)
-├── server/                 # 后端项目 (Node.js + Express)
-│   ├── routes/            # API 路由
-│   ├── services/          # 业务服务
-│   ├── channels/          # 发布渠道实现
-│   │   ├── local.js       # 本地发布
-│   │   ├── remote.js      # 远程 API 发布
-│   │   ├── gitlab.js      # GitLab 发布
-│   │   ├── github.js      # GitHub 发布
-│   │   └── ssh.js         # SSH/SFTP 发布
-│   ├── utils/             # 工具函数
-│   │   └── encryption.js  # 加密工具
-│   ├── db/                # 数据库相关
-│   │   └── init.sql       # MySQL 表结构初始化
-│   ├── skill-creator/     # AI 生成提示词
-│   └── .env               # 环境变量配置
-├── docker/                 # Docker 配置
-│   ├── nginx.conf         # Nginx 反向代理配置
-│   └── start.sh           # 容器启动脚本
-├── skills/                 # Skill 文件缓存目录
-├── published_skills/       # 本地发布输出目录
-├── Dockerfile              # Docker 镜像构建文件
-└── docker-compose.yml      # Docker Compose 编排文件
-```
-
-## Skill 目录结构
-
-```
-skills/
-└── {skill-id}/
-    ├── SKILL.md           # Skill 内容（YAML frontmatter + Markdown）
-    ├── metadata.json      # 元数据（id, version, category, status, timestamps）
-    ├── custom_dirs.json   # 自定义目录配置（不发布）
-    ├── scripts/           # 脚本目录 (.py, .sh, .js 等)
-    ├── references/        # 参考资料目录 (.md, .txt, .json 等)
-    ├── assets/            # 附件目录（图片、PDF 等）
-    └── custom-dir/        # 自定义目录（最多三级）
-```
-
-## SKILL.md 格式
-
-```markdown
----
-name: skill-name
-description: Skill 描述
----
-
-# 正文内容
-
-Markdown 格式的 Skill 说明...
-```
-
-**注意**: 技能名称（name）只能包含字母、数字和连字符(-)，不能包含空格、下划线、中文或其他特殊字符。
+| 层级 | 技术 |
+|------|------|
+| 前端 | React 18 · React Router v6 · Vite 5 · Axios |
+| 后端 | Node.js · Express · MySQL · JWT · Multer |
+| AI | OpenAI 兼容 API（流式 SSE） |
+| 部署 | Docker · Nginx · 多阶段构建 |
+| 测试 | Vitest · fast-check |
 
 ## 快速开始
 
@@ -80,502 +55,298 @@ Markdown 格式的 Skill 说明...
 
 - Node.js 18+
 - MySQL 5.7+
-- npm 或 yarn
 
-### 安装依赖
+### 本地开发
 
 ```bash
+# 克隆项目
+git clone https://github.com/your-username/skillhub.git
+cd skillhub
+
+# 安装依赖
 npm install
-cd client && npm install
-```
+cd client && npm install && cd ..
 
-### 数据库初始化
-
-1. 创建 MySQL 数据库
-2. 执行 `server/db/init.sql` 初始化表结构
-
-```bash
+# 初始化数据库
 mysql -u root -p < server/db/init.sql
+
+# 配置环境变量
+cp server/.env.example server/.env.development
+# 编辑 server/.env.development，填写数据库连接和 JWT_SECRET
+
+# 启动后端（端口 3030）
+npm run dev:server
+
+# 启动前端（端口 3000，自动代理 /api 到后端）
+npm run dev:client
 ```
 
-### 配置环境变量
+访问 http://localhost:3000
 
-在 `server/.env` 文件中配置：
 
-```env
-# MySQL 配置
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=your_password
-MYSQL_DATABASE=skill_hub
+### 默认账户
 
-# JWT 认证密钥（必填，请使用随机字符串）
-JWT_SECRET=your-random-secret-key
+| 用户名 | 密码 | 角色 |
+|--------|------|------|
+| admin | abc123 | 管理员 |
 
-# 加密密钥（可选，用于加密渠道配置中的敏感信息）
-# 不配置时使用固定默认密钥，生产环境建议配置
-# 生成方式: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-
-# 文件上传限制（单位：MB）
-MAX_FILE_SIZE=2      # 单个文件最大 2MB
-MAX_ZIP_SIZE=10      # ZIP 包最大 10MB
-
-# AI 服务配置（用于自动生成 Skill）
-AI_API_KEY=your-api-key
-AI_API_BASE_URL=https://api.openai.com/v1
-AI_MODEL=gpt-4o
-
-# 服务端口（默认 3030）
-PORT=3030
-```
-
-### 启动服务
-
-```bash
-# 启动后端 (端口 3030)
-node server/index.js
-
-# 启动前端开发服务器 (端口 3000)
-cd client && npm run dev
-
-# 构建前端生产版本
-cd client && npm run build
-```
-
-访问 http://localhost:3000 使用应用。
+> ⚠️ 首次登录后请立即修改默认密码
 
 ## Docker 部署
 
-### 快速启动
-
 ```bash
-# 1. 复制环境变量配置文件
+# 1. 复制并编辑环境变量
 cp .env.example .env
-
-# 2. 编辑 .env 文件，修改必要配置
 # 必须修改: JWT_SECRET, MYSQL_PASSWORD
-vim .env
 
-# 3. 构建并启动
+# 2. 构建并启动
 docker-compose up -d --build
 
-# 4. 查看日志
+# 3. 查看日志
 docker-compose logs -f app
 ```
 
-服务将在 `http://localhost` 启动（80 端口）。
+服务默认在 `http://localhost:80` 启动。
 
-### 环境变量配置
+### 子路径部署
 
-创建 `.env` 文件配置环境变量：
-
-```env
-# 必填配置
-JWT_SECRET=your-random-secret-key    # JWT 密钥（必须修改）
-MYSQL_PASSWORD=skillhub_password     # 数据库密码
-MYSQL_ROOT_PASSWORD=root_password    # MySQL root 密码
-
-# 可选配置
-ENCRYPTION_KEY=0123456789abcdef...   # 加密密钥（32字节hex，生产环境建议配置）
-PORT=80                              # 服务端口
-AI_API_KEY=sk-xxx                    # AI 密钥
-AI_API_BASE_URL=https://api.openai.com/v1
-AI_MODEL=gpt-4o
-```
-
-**重要**：
-- `JWT_SECRET` 必须设置为随机字符串，否则服务无法启动
-- `ENCRYPTION_KEY` 用于加密渠道配置中的敏感信息，不配置时使用默认密钥
-
-### 动态设置环境变量
-
-除了 `.env` 文件，还支持以下方式：
+如需部署在反向代理子路径下（如 `/skillhub/`）：
 
 ```bash
-# 方式1: 命令行传递
-JWT_SECRET=abc123 MYSQL_PASSWORD=pass docker-compose up -d
-
-# 方式2: 导出环境变量后启动
-export JWT_SECRET=abc123
-export MYSQL_PASSWORD=pass
-docker-compose up -d
+BASE_URL=/skillhub/ docker-compose up -d --build
 ```
+
+### 环境变量
+
+| 变量 | 必填 | 默认值 | 说明 |
+|------|:----:|--------|------|
+| `JWT_SECRET` | ✅ | — | JWT 认证密钥，使用随机字符串 |
+| `MYSQL_PASSWORD` | ✅ | skillhub_password | MySQL 用户密码 |
+| `MYSQL_ROOT_PASSWORD` | — | root_password | MySQL root 密码 |
+| `PORT` | — | 80 | 服务端口 |
+| `BASE_URL` | — | / | 部署子路径（如 `/skillhub/`） |
+| `ENCRYPTION_KEY` | — | 内置默认 | AES-256 加密密钥（生产环境建议配置） |
+| `AI_API_KEY` | — | — | OpenAI 兼容 API Key |
+| `AI_API_BASE_URL` | — | https://api.openai.com/v1 | AI API 地址 |
+| `AI_MODEL` | — | gpt-4o | AI 模型名称 |
+| `MAX_FILE_SIZE` | — | 2 | 单文件上传限制（MB） |
+| `MAX_ZIP_SIZE` | — | 10 | ZIP 包上传限制（MB） |
+
+### 数据持久化
+
+| 路径 | 说明 |
+|------|------|
+| `./skills` | Skill 文件存储 |
+| `./data` | 应用数据 |
+| `./logs` | 日志文件 |
+| `mysql_data` | MySQL 数据（Docker volume） |
 
 ### 常用命令
 
 ```bash
-# 启动服务
-docker-compose up -d
-
-# 停止服务
-docker-compose down
-
-# 停止并删除数据卷（重置数据库）
-docker-compose down -v
-
-# 查看运行状态
-docker-compose ps
-
-# 进入容器调试
-docker exec -it skillhub sh
-
-# 重新构建镜像
-docker-compose build --no-cache
+docker-compose up -d          # 启动
+docker-compose down            # 停止
+docker-compose down -v         # 停止并清除数据
+docker-compose build --no-cache # 重新构建
+docker exec -it skillhub sh    # 进入容器
 ```
 
-### 配置说明
+## 项目结构
 
-修改 `docker-compose.yml` 中的环境变量：
-
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `JWT_SECRET` | JWT 密钥（**必须修改**） | your_jwt_secret_change_this |
-| `ENCRYPTION_KEY` | 加密密钥（可选，生产环境建议配置） | 使用内置默认密钥 |
-| `MYSQL_PASSWORD` | 数据库密码 | skillhub_password |
-| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 | root_password |
-| `AI_API_KEY` | AI 功能密钥（可选） | 空 |
-
-### 数据持久化
-
-以下目录会持久化存储：
-
-| 目录 | 说明 |
-|------|------|
-| `skills/` | 技能文件存储 |
-| `data/` | 数据文件 |
-| `logs/` | 日志文件 |
-| `mysql_data` | MySQL 数据（Docker volume） |
-
-### 单独构建镜像
-
-```bash
-# 构建镜像
-docker build -t skillhub:latest .
-
-# 运行容器（需要外部 MySQL）
-docker run -d \
-  -p 80:80 \
-  -e MYSQL_HOST=your_mysql_host \
-  -e MYSQL_PASSWORD=your_password \
-  -e JWT_SECRET=your_secret \
-  -v $(pwd)/skills:/app/skills \
-  skillhub:latest
+```
+skillhub/
+├── server/                    # Express 后端 (CommonJS)
+│   ├── index.js               # 入口，中间件，路由挂载
+│   ├── db.js                  # MySQL 连接与初始化
+│   ├── routes/                # API 路由
+│   │   ├── skills.js          # Skill CRUD
+│   │   ├── publish.js         # 发布/下架
+│   │   ├── channels.js        # 渠道管理
+│   │   └── ai.js              # AI 生成（SSE）
+│   ├── services/
+│   │   └── aiService.js       # LLM 集成（流式解析）
+│   ├── channels/              # 发布渠道实现
+│   │   ├── base.js            # 抽象基类
+│   │   ├── local.js           # 本地文件系统
+│   │   ├── remote.js          # 远程 API
+│   │   ├── gitlab.js          # GitLab
+│   │   ├── github.js          # GitHub
+│   │   └── ssh.js             # SSH/SFTP
+│   └── skill-creator/         # AI 提示词模板
+├── client/                    # React SPA (ES Modules)
+│   ├── src/
+│   │   ├── App.jsx            # 路由配置
+│   │   ├── api.js             # API 客户端
+│   │   ├── components/        # 通用组件
+│   │   └── pages/             # 页面组件
+│   └── vite.config.js         # Vite 配置（含 API 代理）
+├── docker/                    # Docker 配置
+│   ├── nginx.conf             # Nginx 反向代理
+│   └── start.sh               # 容器启动脚本
+├── Dockerfile                 # 多阶段构建
+└── docker-compose.yml         # 编排配置
 ```
 
-### 架构说明
+## Skill 文件结构
 
-Docker 部署使用多阶段构建：
+每个 Skill 是一个目录，核心文件为 `SKILL.md`：
 
-1. **前端构建阶段**: 编译 React 应用
-2. **后端准备阶段**: 安装生产依赖
-3. **生产镜像**: 基于 Alpine，包含 Nginx + Node.js
+```
+{skill-id}/
+├── SKILL.md              # 内容（YAML frontmatter + Markdown 正文）       # 元数据
+├── scripts/              # 脚本文件 (.py, .sh, .js ...)
+├── references/           # 参考资料 (.md, .txt, .json ...)
+├── assets/               # 附件（图片、PDF ...）
+└── custom-dir/           # 自定义目录（最多三级）
+```
 
-生产镜像特性：
-- 使用 Nginx 反向代理（静态资源 + API 代理）
-- 非 root 用户运行，更安全
-- 健康检查支持
-- 镜像体积约 200MB
+SKILL.md 格式：
 
-## 用户认证
+```markdown
+---
+name: my-skill-name
+description: 技能描述
+---
 
-### 默认管理员账户
+# 正文内容
 
-系统首次启动时会自动创建默认管理员账户：
-- 用户名: `admin`
-- 密码: `abc123`
-- 角色: 管理员
+Markdown 格式的 Skill 说明...
+```
 
-**重要**: 首次登录后请立即修改默认密码！
-
-### 用户角色
-
-| 角色 | 权限说明 |
-|------|----------|
-| admin | 拥有全部权限，可管理用户、渠道、技能 |
-| user | 可登录并使用基础功能，管理技能 |
-
-### 密码规则
-
-- 默认密码: `abc123`
-- 最小长度: 3 位
-- 管理员可重置任意用户密码
-- 用户可在个人设置中修改自己的密码
+> `name` 只能包含字母、数字和连字符（`-`）
 
 ## 发布渠道
 
-### 安全说明
+SkillHub 支持五种发布渠道，所有渠道的敏感配置（token、password 等）均加密存储。
 
-渠道配置中的敏感字段（token、password、privateKey、passphrase 等）会使用 AES-256-GCM 加密存储，API 返回时自动脱敏为 `******`。
+### 本地发布
 
-### 1. 本地发布 (local)
+发布到本地目录，输出格式为 `{技能名}@{版本号}/`。
 
-将 Skill 发布到本地目录，适合备份和离线使用。
+### GitLab
 
-```json
-{
-  "outputDir": "./published_skills"
-}
-```
+发布到 GitLab 仓库（支持自托管实例），需要 Personal Access Token（api 权限）。
 
-发布后的目录名为 `{技能名}@{版本号}`，包含所有文件。
+### GitHub
 
-### 2. GitLab 发布
+发布到 GitHub 仓库，需要 Personal Access Token（repo 权限）。
 
-将 Skill 发布到 GitLab 仓库，支持自托管 GitLab 实例。
+### SSH/SFTP
 
-```json
-{
-  "gitlabUrl": "https://gitlab.com",
-  "projectId": "123",
-  "branch": "main",
-  "token": "glpat-xxxx",
-  "basePath": "skills"
-}
-```
+通过 SSH 发布到远程服务器，支持密码和私钥两种认证方式。
 
-**配置说明**:
-- `gitlabUrl`: GitLab 实例地址（支持自托管，默认 https://gitlab.com）
-- `projectId`: 项目 ID 或路径（如 `123` 或 `owner/repo`）
-- `branch`: 分支名称（默认 main）
-- `token`: GitLab Personal Access Token（需要 api 权限）
-- `basePath`: 仓库中的目标路径
+### 远程 API
 
-发布后的目录名为 `{技能名}@{版本号}`。
+将 Skill 打包为 ZIP 发送到自定义 API 端点，适合对接内部系统。
 
-### 3. GitHub 发布
-
-将 Skill 发布到指定的 GitHub 仓库和分支。
-
-```json
-{
-  "owner": "your-username",
-  "repo": "your-repo",
-  "branch": "main",
-  "token": "ghp_xxxx",
-  "basePath": "skills"
-}
-```
-
-**配置说明**:
-- `owner`: GitHub 用户名或组织名
-- `repo`: 仓库名称
-- `branch`: 分支名称（默认 main）
-- `token`: GitHub Personal Access Token（需要 repo 权限）
-- `basePath`: 仓库中的目标路径
-- `repoUrl`: 支持直接填写完整 URL，自动解析 owner/repo
-
-发布后的目录名为 `{技能名}@{版本号}`。
-
-### 4. SSH/SFTP 发布
-
-通过 SSH/SFTP 将 Skill 发布到远程服务器。
-
-```json
-{
-  "host": "192.168.1.100",
-  "port": 22,
-  "username": "user",
-  "password": "your-password",
-  "privateKey": "",
-  "passphrase": "",
-  "basePath": "/home/user/skills"
-}
-```
-
-**配置说明**:
-- `host`: SSH 服务器地址（IP 或域名）
-- `port`: SSH 端口（默认 22）
-- `username`: SSH 登录用户名
-- `password`: SSH 密码（与 privateKey 二选一）
-- `privateKey`: 私钥内容或私钥文件路径
-- `passphrase`: 私钥密码短语（如有）
-- `basePath`: 服务器上存放技能的目录路径
-
-发布后的目录名为 `{技能名}@{版本号}`。
-
-### 5. 远程 API 发布 (remote)
-
-将 Skill 打包为 ZIP 并发送到远程服务器 API。
-
-```json
-{
-  "url": "https://example.com/api/skills/publish",
-  "unpublishUrl": "https://example.com/api/skills/unpublish",
-  "healthCheckUrl": "https://example.com/api/health",
-  "headers": {},
-  "timeout": 60000
-}
-```
-
-**配置说明**:
-- `url`: 发布接口地址（必填）
-- `unpublishUrl`: 下架接口地址（可选）
-- `healthCheckUrl`: 健康检查地址（可选，默认使用 url）
-- `headers`: 自定义请求头（JSON 对象）
-- `timeout`: 请求超时时间（毫秒，默认 60000）
-
-ZIP 包名为 `{技能名}@{版本号}.zip`。
-
-**远程 API 对接规范**:
-
-发布接口接收 `multipart/form-data` 格式：
+发布接口接收 `multipart/form-data`：
 - `skill`: ZIP 文件
-- `metadata`: JSON 字符串，包含 `{id, name, description, version, category}`
+- `metadata`: JSON 字符串 `{id, name, description, version, category}`
 
-## 数据迁移
+## 扩展发布渠道
 
-### 渠道配置加密迁移
+新建渠道只需两步：
 
-如果已有未加密的渠道配置，需要执行迁移脚本进行加密：
+1. 继承 `server/channels/base.js` 的 `BaseChannel`，实现 `publish` / `unpublish` / `testConnection` 方法
+2. 在 `server/channels/index.js` 中注册
 
-```bash
-# 执行迁移（加密已有渠道配置中的敏感字段）
-node server/db/migrate-encryption.js
+```javascript
+// server/channels/my-channel.js
+const BaseChannel = require('./base');
 
-# 验证加密结果
-node server/db/migrate-encryption.js verify
+class MyChannel extends BaseChannel {
+  async publish(skillDir, metadata) { /* ... */ }
+  async unpublish(metadata) { /* ... */ }
+  async testConnection() { /* ... */ }
+}
+
+module.exports = MyChannel;
 ```
 
-**注意**：迁移后请确保所有实例使用相同的 `ENCRYPTION_KEY`，否则解密会失败。
-
-## ZIP 导入
-
-支持导入符合以下格式的 ZIP 文件：
-
-1. ZIP 中必须包含 `SKILL.md` 文件
-2. `SKILL.md` 必须有 YAML 头，包含 `name` 和 `description` 字段
-3. 自动识别并注册自定义目录（非 scripts/references/assets 的目录）
-4. 自动排除 `metadata.json` 和 `custom_dirs.json`
-
-**文件大小限制**:
-- 单个文件最大 2MB（可通过 `MAX_FILE_SIZE` 环境变量配置）
-- ZIP 包最大 10MB（可通过 `MAX_ZIP_SIZE` 环境变量配置）
-- ZIP 文件扩展名必须为 `.zip`
-
-## 自定义目录
-
-- 支持创建最多三级子目录
-- 目录名只能包含字母、数字、下划线、中划线
-- 支持上传任意类型文件（单文件最大 2MB）
-- 文本文件（.txt, .md, .json, .py, .js 等）支持在线编辑
-- 二进制文件（图片、PDF 等）仅支持下载
-
-## API 接口
+## API 文档
 
 ### 认证
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/auth/login` | 登录获取 JWT Token |
-| GET | `/api/auth/me` | 获取当前登录用户信息 |
-| PUT | `/api/auth/password` | 修改当前用户密码 |
+| POST | `/api/auth/login` | 登录，返回 JWT Token |
+| GET | `/api/auth/me` | 获取当前用户信息 |
+| PUT | `/api/auth/password` | 修改密码 |
 
-### 用户管理（需要管理员权限）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/users` | 获取用户列表 |
-| POST | `/api/users` | 创建新用户 |
-| PUT | `/api/users/:id` | 更新用户信息 |
-| DELETE | `/api/users/:id` | 删除用户 |
-| PUT | `/api/users/:id/reset-password` | 重置用户密码 |
-
-### Skills
+### Skill 管理
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/skills` | 获取 Skill 列表（支持分页、搜索、状态筛选） |
-| GET | `/api/skills/:id` | 获取单个 Skill |
-| POST | `/api/skills` | 创建 Skill |
-| PUT | `/api/skills/:id` | 更新 Skill |
-| DELETE | `/api/skills/:id` | 删除 Skill |
-| GET | `/api/skills/:id/raw` | 获取原始 SKILL.md 内容 |
-| GET | `/api/skills/:id/download` | 下载 Skill ZIP 包 |
-| POST | `/api/skills/import-zip` | 导入 ZIP 创建 Skill |
+| GET | `/api/skills` | 列表（分页、搜索、筛选） |
+| GET | `/api/skills/:id` | 详情 |
+| POST | `/api/skills` | 创建 |
+| PUT | `/api/skills/:id` | 更新 |
+| DELETE | `/api/skills/:id` | 删除 |
+| GET | `/api/skills/:id/download` | 下载 ZIP |
+| POST | `/api/skills/import-zip` | 导入 ZIP |
 
 ### 文件管理
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/skills/:id/scripts` | 获取脚本列表 |
-| PUT | `/api/skills/:id/scripts/:filename` | 保存脚本 |
-| DELETE | `/api/skills/:id/scripts/:filename` | 删除脚本 |
-| GET | `/api/skills/:id/references` | 获取参考资料列表 |
-| PUT | `/api/skills/:id/references/:filename` | 保存参考资料 |
-| DELETE | `/api/skills/:id/references/:filename` | 删除参考资料 |
-| GET | `/api/skills/:id/assets` | 获取附件列表 |
-| POST | `/api/skills/:id/assets` | 上传附件（最大 2MB） |
-| DELETE | `/api/skills/:id/assets/:filename` | 删除附件 |
+| GET | `/api/skills/:id/:type` | 获取文件列表（scripts/references/assets） |
+| PUT | `/api/skills/:id/:type/:filename` | 保存文件 |
+| DELETE | `/api/skills/:id/:type/:filename` | 删除文件 |
+| POST | `/api/skills/:id/assets` | 上传附件 |
 
-### 自定义目录
+### 发布
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/skills/:id/custom-dirs` | 获取自定义目录列表 |
-| POST | `/api/skills/:id/custom-dirs` | 创建自定义目录 |
-| PUT | `/api/skills/:id/custom-dirs/:dirId` | 重命名目录 |
-| DELETE | `/api/skills/:id/custom-dirs/:dirId` | 删除目录 |
-| GET | `/api/skills/:id/custom-dirs/:dirPath/files` | 获取目录文件列表 |
-| GET | `/api/skills/:id/custom-files/:filePath` | 获取/下载文件 |
-| PUT | `/api/skills/:id/custom-files/:filePath` | 保存文件 |
-| DELETE | `/api/skills/:id/custom-files/:filePath` | 删除文件 |
-| POST | `/api/skills/:id/custom-dirs/:dirPath/upload` | 上传文件到目录 |
+| POST | `/api/skills/:id/publish` | 发布到指定渠道 |
+| POST | `/api/skills/:id/unpublish` | 下架 |
+| GET | `/api/skills/:id/records` | 发布记录 |
 
-### 发布管理
+### 渠道
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/skills/:id/publish` | 发布 Skill 到指定渠道 |
-| POST | `/api/skills/:id/unpublish` | 下架 Skill |
-| GET | `/api/skills/:id/records` | 获取发布记录 |
-
-### 渠道管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/channels` | 获取渠道列表 |
+| GET | `/api/channels` | 渠道列表 |
 | POST | `/api/channels` | 创建渠道 |
 | PUT | `/api/channels/:id` | 更新渠道 |
 | DELETE | `/api/channels/:id` | 删除渠道 |
-| POST | `/api/channels/:id/test` | 测试渠道连接 |
-| POST | `/api/channels/test-config` | 测试渠道配置（无需保存） |
+| POST | `/api/channels/:id/test` | 测试连接 |
 
 ### AI 生成
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/ai/generate` | AI 生成 Skill（SSE 流式返回） |
+| POST | `/api/ai/generate` | AI 生成 Skill（SSE 流式） |
 
-## 支持的文件格式
+### 用户管理（管理员）
 
-### 可编辑的文本文件
-`.txt`, `.md`, `.markdown`, `.rst`, `.adoc`, `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.sh`, `.bash`, `.zsh`, `.ps1`, `.bat`, `.cmd`, `.rb`, `.pl`, `.lua`, `.php`, `.java`, `.c`, `.cpp`, `.h`, `.hpp`, `.cs`, `.go`, `.rs`, `.swift`, `.kt`, `.scala`, `.r`, `.sql`, `.vue`, `.svelte`, `.json`, `.yaml`, `.yml`, `.xml`, `.toml`, `.ini`, `.env`, `.cfg`, `.conf`, `.properties`, `.gitignore`, `.dockerignore`, `.editorconfig`, `.html`, `.htm`, `.css`, `.scss`, `.sass`, `.less`, `.styl`, `.log`, `.csv`, `.tsv`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/users` | 用户列表 |
+| POST | `/api/users` | 创建用户 |
+| PUT | `/api/users/:id` | 更新用户 |
+| DELETE | `/api/users/:id` | 删除用户 |
+| PUT | `/api/users/:id/reset-password` | 重置密码 |
 
-### 二进制文件
-图片、PDF、压缩包等支持上传和下载，不支持在线编辑。
+## 开发
 
-## 技术栈
+```bash
+npm run dev:server    # 启动后端（端口 3030）
+npm run dev:client    # 启动前端（端口 3000）
+npm test              # 运行测试
+npm run build:client  # 构建前端生产版本
+```
 
-- **前端**: React, React Router, Vite, Axios
-- **后端**: Node.js, Express, Multer, node-fetch, bcrypt, jsonwebtoken
-- **数据库**: MySQL
-- **认证**: JWT (JSON Web Token)
-- **存储**: MySQL（元数据） + 本地文件系统（二进制文件）
-- **AI**: OpenAI 兼容 API
+### 关键约定
 
-## 数据库表结构
+- 后端路由挂载在 `/api/` 下
+- 数据库操作使用 `mysql2`（异步）
+- 前端 API 调用统一通过 `client/src/api.js`
+- 测试文件与源码同目录，命名 `*.test.js`
 
-| 表名 | 说明 |
-|------|------|
-| t_sh_users | 用户信息（用户名、密码哈希、角色等） |
-| t_sh_skills | 技能元数据（名称、描述、版本、状态等） |
-| t_sh_channels | 发布渠道配置 |
-| t_sh_publish_records | 发布记录 |
-| t_sh_custom_dirs | 自定义目录配置 |
-| t_sh_skill_files | 文件追踪表 |
+项目图片
+![alt text](image.png)
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -117,7 +117,7 @@ const REMOTE_API_DOC = `
 
 const DEFAULT_CONFIGS = {
   local: '{\n  "outputDir": "./published_skills"\n}',
-  gitlab: '{\n  "gitlabUrl": "https://git.kingdee.com",\n  "projectId": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}',
+  gitlab: '{\n  "gitlabUrl": "https://git.com",\n  "projectId": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}',
   github: '{\n  "owner": "",\n  "repo": "",\n  "branch": "main",\n  "token": "",\n  "basePath": "skills"\n}',
   ssh: '{\n  "host": "",\n  "port": 22,\n  "username": "",\n  "password": "",\n  "privateKey": "",\n  "passphrase": "",\n  "basePath": "skills"\n}',
   remote: '{\n  "url": "https://example.com/api/skills/publish",\n  "unpublishUrl": "https://example.com/api/skills/unpublish",\n  "healthCheckUrl": "https://example.com/api/health",\n  "headers": {},\n  "timeout": 60000\n}'
@@ -172,7 +172,7 @@ function createEmptyGitHubConfig() {
 
 function createEmptyGitLabConfig() {
   return {
-    gitlabUrl: 'https://git.kingdee.com',
+    gitlabUrl: 'https://git.com',
     projectId: '',
     branch: 'main',
     token: '',
@@ -280,7 +280,7 @@ function getChannelConfigItems(channel) {
       ];
     case 'gitlab':
       return [
-        { label: 'GitLab URL', value: compactConfigValue(config.gitlabUrl || 'https://git.kingdee.com') },
+        { label: 'GitLab URL', value: compactConfigValue(config.gitlabUrl || 'https://git.com') },
         { label: '项目', value: compactConfigValue(config.projectId) },
         { label: '分支', value: compactConfigValue(config.branch || 'main') },
         { label: '目录', value: compactConfigValue(config.basePath) },
@@ -415,8 +415,8 @@ function GitLabConfigForm({ config, onChange, isEdit }) {
       <div className="form-group channels-config-span">
         <label>GitLab 实例地址</label>
         <input
-          placeholder="https://git.kingdee.com"
-          value={config.gitlabUrl || 'https://git.kingdee.com'}
+          placeholder="https://git.com"
+          value={config.gitlabUrl || 'https://git.com'}
           onChange={(event) => update('gitlabUrl', event.target.value)}
         />
         <span className="channels-field-hint">支持自托管 GitLab，填写完整地址。</span>
@@ -701,7 +701,7 @@ export default function Channels() {
       });
     } else if (channel.type === 'gitlab') {
       setGitLabConfig({
-        gitlabUrl: channel.config.gitlabUrl || 'https://git.kingdee.com',
+        gitlabUrl: channel.config.gitlabUrl || 'https://git.com',
         projectId: channel.config.projectId || '',
         branch: channel.config.branch || 'main',
         token: channel.config.token || '',
