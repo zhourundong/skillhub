@@ -75,28 +75,8 @@ export default function AiGenerator({ onComplete, onCancel }) {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      // 处理 buffer 中的事件的辅助函数
-      const processBuffer = (buf, isFinal = false) => {
-        const lines = buf.split('\n');
-        // 如果不是最终处理，保留最后一行（可能不完整）
-        const remainingBuffer = isFinal ? '' : (lines.pop() || '');
-
-        let eventType = '';
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            eventType = line.slice(7).trim();
-          } else if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6);
-            try {
-              const data = JSON.parse(dataStr);
-              return { eventType, data, remainingBuffer };
-            } catch (e) {
-              console.error('[AI Generator] JSON parse error:', e.message);
-            }
-          }
-        }
-        return { eventType: null, data: null, remainingBuffer };
-      };
+      // 跨 chunk 保持 eventType
+      let currentEventType = '';
 
       // 处理单个事件的函数
       const handleEvent = (eventType, data) => {
@@ -150,18 +130,17 @@ export default function AiGenerator({ onComplete, onCancel }) {
           // 流结束，处理剩余的 buffer
           if (buffer.trim()) {
             console.log('[AI Generator] Processing remaining buffer, length:', buffer.length);
-            console.log('[AI Generator] Buffer content:', buffer);
-            let eventType = '';
             const lines = buffer.split('\n');
             for (const line of lines) {
               if (line.startsWith('event: ')) {
-                eventType = line.slice(7).trim();
+                currentEventType = line.slice(7).trim();
               } else if (line.startsWith('data: ')) {
                 const dataStr = line.slice(6);
-                console.log('[AI Generator] Parsing data line, eventType:', eventType, 'dataStr length:', dataStr.length);
+                console.log('[AI Generator] Parsing data line, eventType:', currentEventType, 'dataStr length:', dataStr.length);
                 try {
                   const data = JSON.parse(dataStr);
-                  handleEvent(eventType, data);
+                  handleEvent(currentEventType, data);
+                  currentEventType = '';
                 } catch (e) {
                   console.error('[AI Generator] Final buffer parse error:', e.message, 'dataStr:', dataStr.substring(0, 100));
                 }
@@ -177,20 +156,23 @@ export default function AiGenerator({ onComplete, onCancel }) {
         const lines = buffer.split('\n');
         buffer = lines.pop() || ''; // 保留未完成的行
 
-        let eventType = '';
         for (const line of lines) {
           if (line.startsWith('event: ')) {
-            eventType = line.slice(7).trim();
+            currentEventType = line.slice(7).trim();
           } else if (line.startsWith('data: ')) {
             const dataStr = line.slice(6);
             try {
               const data = JSON.parse(dataStr);
-              handleEvent(eventType, data);
+              handleEvent(currentEventType, data);
+              currentEventType = ''; // 事件处理完毕，重置
             } catch (e) {
               if (e.message && !e.message.includes('JSON')) {
                 throw e;
               }
             }
+          } else if (line.trim() === '') {
+            // SSE 事件分隔符（空行），重置 eventType
+            currentEventType = '';
           }
         }
       }

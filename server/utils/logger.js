@@ -12,7 +12,7 @@ if (!fs.existsSync(LOG_DIR)) {
 
 // 获取时间戳
 function timestamp() {
-  return new Date().toISOString();
+  return new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }).replace(/\//g, '-');
 }
 
 // 格式化日志
