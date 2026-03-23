@@ -240,9 +240,12 @@ function parseGeneratedSkill(rawOutput) {
       let jsonStr = codeBlockMatch[1].trim();
       jsonStr = fixJsonString(jsonStr);
       const parsed = JSON.parse(jsonStr);
+      console.log('[AI] Code block parsed, keys:', Object.keys(parsed || {}));
       if (isValidSkill(parsed)) {
-        console.log('[AI] Parsed from json code block');
+        console.log('[AI] Parsed from json code block, skill name:', parsed.name);
         return { success: true, skill: fillDefaults(parsed) };
+      } else {
+        console.log('[AI] Parsed but isValidSkill returned false');
       }
     } catch (e) {
       console.log(`[AI] Failed to parse json code block: ${e.message}`);
@@ -283,8 +286,9 @@ function parseGeneratedSkill(rawOutput) {
         jsonStr = jsonStr.substring(0, endIndex);
         jsonStr = fixJsonString(jsonStr);
         const parsed = JSON.parse(jsonStr);
+        console.log('[AI] Extracted JSON parsed, keys:', Object.keys(parsed || {}));
         if (isValidSkill(parsed)) {
-          console.log('[AI] Parsed from extracted JSON object');
+          console.log('[AI] Parsed from extracted JSON object, skill name:', parsed.name);
           return { success: true, skill: fillDefaults(parsed) };
         }
       } else {
@@ -322,11 +326,27 @@ function parseGeneratedSkill(rawOutput) {
 }
 
 function isValidSkill(parsed) {
-  return parsed &&
+  const result = parsed &&
     typeof parsed === 'object' &&
     typeof parsed.name === 'string' && parsed.name.trim() &&
     typeof parsed.description === 'string' && parsed.description.trim() &&
     typeof parsed.skill_content === 'string' && parsed.skill_content.trim();
+
+  if (!result && parsed) {
+    console.log('[AI] isValidSkill failed:', {
+      hasName: typeof parsed.name === 'string' && !!parsed.name?.trim(),
+      hasDescription: typeof parsed.description === 'string' && !!parsed.description?.trim(),
+      hasContent: typeof parsed.skill_content === 'string' && !!parsed.skill_content?.trim(),
+      nameType: typeof parsed.name,
+      descriptionType: typeof parsed.description,
+      contentType: typeof parsed.skill_content,
+      name: parsed.name?.substring?.(0, 50),
+      description: parsed.description?.substring?.(0, 50),
+      contentLength: typeof parsed.skill_content === 'string' ? parsed.skill_content.length : 'not a string'
+    });
+  }
+
+  return result;
 }
 
 /**
@@ -405,6 +425,7 @@ async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, o
 
   const reader = response.body;
   let buffer = '';
+  let streamEnded = false;
 
   for await (const chunk of reader) {
     buffer += chunk.toString();
@@ -414,7 +435,11 @@ async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, o
     for (const line of lines) {
       if (line.startsWith('data: ')) {
         const data = line.slice(6).trim();
-        if (data === '[DONE]') continue;
+        if (data === '[DONE]') {
+          console.log('[AI] Stream received [DONE] signal');
+          streamEnded = true;
+          continue;
+        }
 
         try {
           const json = JSON.parse(data);
@@ -461,6 +486,28 @@ async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, o
       }
     }
   }
+
+  // 处理 buffer 中剩余的数据
+  if (buffer.trim()) {
+    console.log('[AI] Processing remaining buffer after stream end:', buffer.substring(0, 200));
+    if (buffer.startsWith('data: ')) {
+      const data = buffer.slice(6).trim();
+      if (data !== '[DONE]') {
+        try {
+          const json = JSON.parse(data);
+          const delta = json.choices?.[0]?.delta;
+          if (delta) {
+            if (delta.content) content += delta.content;
+            if (delta.reasoning_content) reasoning += delta.reasoning_content;
+          }
+        } catch (e) {
+          console.log('[AI] Failed to parse remaining buffer:', e.message);
+        }
+      }
+    }
+  }
+
+  console.log(`[AI] Stream ended, received [DONE]: ${streamEnded}, content length: ${content.length}, reasoning length: ${reasoning.length}`);
 
   // 过滤掉无效的工具调用
   toolCalls = toolCalls.filter(tc => tc.id && tc.function?.name);
@@ -719,7 +766,16 @@ ${forbiddenSection}
       }
 
       // 没有工具调用，尝试解析最终结果
-      const parseResult = parseGeneratedSkill(lastContent);
+      // 如果 content 为空但 reasoning 有内容，从 reasoning 中解析
+      let contentToParse = lastContent;
+      if (!contentToParse || contentToParse.trim() === '') {
+        if (lastReasoning && lastReasoning.trim()) {
+          console.log('[AI] Content is empty, trying to parse from reasoning content');
+          contentToParse = lastReasoning;
+        }
+      }
+      const parseResult = parseGeneratedSkill(contentToParse);
+      console.log('[AI] parseResult:', { success: parseResult.success, hasSkill: !!parseResult.skill, skillName: parseResult.skill?.name });
       const generatedFiles = getGeneratedFiles();
 
       const finalResult = {
@@ -731,6 +787,8 @@ ${forbiddenSection}
         assets: generatedFiles.assets,
         reasoning: lastReasoning
       };
+
+      console.log('[AI] finalResult.success:', finalResult.success);
 
       if (parseResult.success) {
         finalResult.skill = {
@@ -753,7 +811,15 @@ ${forbiddenSection}
           const data = await callAI(baseUrl, apiKey, model, messages, []);
           const content = data.choices?.[0]?.message?.content || '';
           const reasoning = data.choices?.[0]?.message?.reasoning_content || '';
-          const parseResult = parseGeneratedSkill(content);
+          // 如果 content 为空但 reasoning 有内容，从 reasoning 中解析
+          let contentToParse = content;
+          if (!contentToParse || contentToParse.trim() === '') {
+            if (reasoning && reasoning.trim()) {
+              console.log('[AI] Fallback: content is empty, parsing from reasoning');
+              contentToParse = reasoning;
+            }
+          }
+          const parseResult = parseGeneratedSkill(contentToParse);
           return { ...parseResult, iterations: 1, toolCallsMade: 0, fallback: true, reasoning };
         } catch (retryErr) {
           throw retryErr;
@@ -766,7 +832,15 @@ ${forbiddenSection}
 
   // 达到最大迭代次数，返回最后的内容
   console.log(`[AI] Max iterations reached: ${MAX_TOOL_ITERATIONS}`);
-  const parseResult = parseGeneratedSkill(lastContent);
+  // 如果 content 为空但 reasoning 有内容，从 reasoning 中解析
+  let contentToParse = lastContent;
+  if (!contentToParse || contentToParse.trim() === '') {
+    if (lastReasoning && lastReasoning.trim()) {
+      console.log('[AI] Max iterations: content is empty, parsing from reasoning');
+      contentToParse = lastReasoning;
+    }
+  }
+  const parseResult = parseGeneratedSkill(contentToParse);
   const generatedFiles = getGeneratedFiles();
 
   return {
