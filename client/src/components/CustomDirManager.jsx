@@ -534,7 +534,7 @@ export default function CustomDirManager({ skillId, readonly }) {
                           </button>
                         )}
                         <a
-                          href={`/api/skills/${skillId}/custom-files/${encodeURIComponent(f.path)}?download=1`}
+                          href={`${import.meta.env.BASE_URL}api/skills/${skillId}/custom-files/${encodeURIComponent(f.path)}?download=1`}
                           className="btn btn-default"
                           style={{ padding: '4px 8px', fontSize: 12, marginRight: 4, textDecoration: 'none' }}
                           download
