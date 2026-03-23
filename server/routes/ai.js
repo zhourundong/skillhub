@@ -6,9 +6,28 @@ const router = express.Router();
 
 const MAX_PROMPT_LENGTH = 5000;
 
+/**
+ * 生成短请求 ID
+ */
+function generateRequestId() {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+}
+
 // POST /generate — AI skill generation with SSE (requires authentication)
 router.post('/generate', authenticateToken, async (req, res) => {
+  // 生成请求 ID 用于日志追踪
+  const requestId = generateRequestId();
+  const logPrefix = `[AI Route ${requestId}]`;
+
+  const log = {
+    info: (...args) => console.log(logPrefix, ...args),
+    error: (...args) => console.error(logPrefix, ...args),
+    warn: (...args) => console.warn(logPrefix, ...args),
+  };
+
   const { prompt, language, fileOptions } = req.body;
+
+  log.info(`New generation request, prompt length: ${prompt?.length || 0}`);
 
   // Validate prompt
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -39,6 +58,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
   // 文件生成回调
   const onFileGenerated = (file) => {
+    log.info(`File generated: ${file.type}/${file.filename} (${file.size} chars)`);
     sendEvent('file', file);
   };
 
@@ -49,15 +69,17 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
   // 思考内容回调（流式增量内容）
   const onReasoning = (reasoning) => {
-    console.log(`[AI Route] Reasoning chunk: ${reasoning.substring(0, 100)}...`);
+    log.info(`Reasoning chunk: ${reasoning.substring(0, 100)}...`);
     sendEvent('reasoning', { content: reasoning });
   };
 
   try {
-    // 注册文件生成回调
-    aiService.setFileGeneratedCallback(onFileGenerated);
-
-    const result = await aiService.generateSkill(prompt, onChunk, onReasoning, { language, fileOptions });
+    const result = await aiService.generateSkill(prompt, onChunk, onReasoning, {
+      language,
+      fileOptions,
+      onFileGenerated,
+      requestId // 传递请求 ID
+    });
 
     // 发送最终结果
     const doneData = {
@@ -65,14 +87,13 @@ router.post('/generate', authenticateToken, async (req, res) => {
       skill: result.skill || null,
       rawOutput: result.rawOutput || null
     };
-    console.log(`[AI Route] Done event: success=${result.success}, hasSkill=${!!result.skill}, skillName=${result.skill?.name}`);
-    console.log(`[AI Route] Sending done event with skill data length: ${JSON.stringify(doneData.skill || {}).length}`);
+    log.info(`Done event: success=${result.success}, hasSkill=${!!result.skill}, skillName=${result.skill?.name}`);
     sendEvent('done', doneData);
   } catch (err) {
-    console.error(`[AI Route] Error: ${err.message}`);
+    log.error(`Error: ${err.message}`);
     sendEvent('error', { error: err.message });
   } finally {
-    aiService.setFileGeneratedCallback(null);
+    log.info('Request completed');
     res.end();
   }
 });

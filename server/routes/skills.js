@@ -284,7 +284,7 @@ router.post('/', authenticateToken, async (req, res) => {
     if (Array.isArray(scripts) && scripts.length > 0) {
       for (const file of scripts) {
         if (file.filename && file.content) {
-          db.saveTextFile(skillId, 'scripts', file.filename, file.content);
+          await db.saveTextFile(skillId, 'scripts', file.filename, file.content);
         }
       }
     }
@@ -293,7 +293,7 @@ router.post('/', authenticateToken, async (req, res) => {
     if (Array.isArray(references) && references.length > 0) {
       for (const file of references) {
         if (file.filename && file.content) {
-          db.saveTextFile(skillId, 'references', file.filename, file.content);
+          await db.saveTextFile(skillId, 'references', file.filename, file.content);
         }
       }
     }
@@ -304,10 +304,10 @@ router.post('/', authenticateToken, async (req, res) => {
         if (file.filename && file.content) {
           // 尝试作为文本文件保存
           try {
-            db.saveTextFile(skillId, 'assets', file.filename, file.content);
+            await db.saveTextFile(skillId, 'assets', file.filename, file.content);
           } catch (e) {
             // 如果是二进制内容，用 Buffer 保存
-            db.saveAsset(skillId, file.filename, Buffer.from(file.content, 'utf-8'));
+            await db.saveAsset(skillId, file.filename, Buffer.from(file.content, 'utf-8'));
           }
         }
       }

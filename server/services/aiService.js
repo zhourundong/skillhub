@@ -1,12 +1,62 @@
 const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
-const { executeToolCall, resetGeneratedFiles, getGeneratedFiles } = require('./toolService');
+const {
+  createFileStore,
+  createToolExecutor,
+  executeToolCallNew: executeToolCallFromService
+} = require('./toolService');
 
 const MAX_TOOL_ITERATIONS = 15; // 防止无限循环
 
-// 文件生成回调函数
-let fileGeneratedCallback = null;
+/**
+ * 生成短请求 ID
+ */
+function generateRequestId() {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+}
+
+/**
+ * 创建带请求 ID 的日志器
+ */
+function createRequestLogger(requestId) {
+  const prefix = `[AI ${requestId}]`;
+
+  return {
+    info: (...args) => console.log(prefix, ...args),
+    error: (...args) => console.error(prefix, ...args),
+    warn: (...args) => console.warn(prefix, ...args),
+  };
+}
+
+/**
+ * 使用 toolExecutor 执行工具调用（解决并发问题）
+ */
+async function executeToolCallFromExecutor(toolExecutor, toolName, args) {
+  const executor = toolExecutor[toolName];
+  if (!executor) {
+    return { success: false, error: `未知工具: ${toolName}` };
+  }
+
+  try {
+    console.log(`[AI Tool] Executing: ${toolName}`, JSON.stringify(args));
+    const result = executor(args || {});
+
+    // 处理 Promise 返回
+    if (result instanceof Promise) {
+      return await result.catch(err => {
+        console.error(`[AI Tool] Error: ${err.message}`);
+        return { success: false, error: err.message };
+      });
+    }
+
+    console.log(`[AI Tool] Result: ${result.success ? 'success' : 'failed'}`);
+    return result;
+  } catch (err) {
+    console.error(`[AI Tool] Error executing ${toolName}:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
 
 /**
  * 根据选项生成工具定义
@@ -50,18 +100,11 @@ function buildTools(fileOptions) {
 }
 
 /**
- * 设置文件生成回调
+ * 触发文件生成事件（内部使用，必须传入回调）
  */
-function setFileGeneratedCallback(callback) {
-  fileGeneratedCallback = callback;
-}
-
-/**
- * 触发文件生成事件
- */
-function emitFileGenerated(file) {
-  if (typeof fileGeneratedCallback === 'function') {
-    fileGeneratedCallback(file);
+function emitFileGenerated(file, callback) {
+  if (typeof callback === 'function') {
+    callback(file);
   }
 }
 
@@ -378,9 +421,12 @@ function fillDefaults(parsed) {
 
 /**
  * 流式调用 AI API
+ * @param {object} logger - 可选的请求级别日志器
  * @returns {Promise<{content: string, reasoning: string, toolCalls: Array}>}
  */
-async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, onReasoning) {
+async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, onReasoning, logger = null) {
+  const log = logger || { info: (...args) => console.log('[AI]', ...args), error: (...args) => console.error('[AI]', ...args) };
+
   const url = baseUrl.replace(/\/+$/, '') + '/chat/completions';
 
   const requestBody = {
@@ -395,8 +441,8 @@ async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, o
     requestBody.tool_choice = 'auto';
   }
 
-  console.log(`[AI] Streaming request: ${url}`);
-  console.log(`[AI] Model: ${model}`);
+  log.info(`Streaming request: ${url}`);
+  log.info(`Model: ${model}`);
 
   const response = await fetch(url, {
     method: 'POST',
@@ -409,7 +455,7 @@ async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, o
     timeout: 300000,
   });
 
-  console.log(`[AI] Response status: ${response.status}`);
+  log.info(`Response status: ${response.status}`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -436,7 +482,7 @@ async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, o
       if (line.startsWith('data: ')) {
         const data = line.slice(6).trim();
         if (data === '[DONE]') {
-          console.log('[AI] Stream received [DONE] signal');
+          log.info('Stream received [DONE] signal');
           streamEnded = true;
           continue;
         }
@@ -489,7 +535,7 @@ async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, o
 
   // 处理 buffer 中剩余的数据
   if (buffer.trim()) {
-    console.log('[AI] Processing remaining buffer after stream end:', buffer.substring(0, 200));
+    log.info('Processing remaining buffer after stream end:', buffer.substring(0, 200));
     if (buffer.startsWith('data: ')) {
       const data = buffer.slice(6).trim();
       if (data !== '[DONE]') {
@@ -501,13 +547,13 @@ async function streamAI(baseUrl, apiKey, model, messages, tools = [], onChunk, o
             if (delta.reasoning_content) reasoning += delta.reasoning_content;
           }
         } catch (e) {
-          console.log('[AI] Failed to parse remaining buffer:', e.message);
+          log.error('Failed to parse remaining buffer:', e.message);
         }
       }
     }
   }
 
-  console.log(`[AI] Stream ended, received [DONE]: ${streamEnded}, content length: ${content.length}, reasoning length: ${reasoning.length}`);
+  log.info(`Stream ended, received [DONE]: ${streamEnded}, content length: ${content.length}, reasoning length: ${reasoning.length}`);
 
   // 过滤掉无效的工具调用
   toolCalls = toolCalls.filter(tc => tc.id && tc.function?.name);
@@ -561,6 +607,12 @@ async function callAI(baseUrl, apiKey, model, messages, tools = []) {
  * @param {object} options - 配置选项
  */
 async function generateSkill(userPrompt, onChunk, onReasoning, options = {}) {
+  // 使用传入的 requestId 或生成新的
+  const requestId = options.requestId || generateRequestId();
+  const log = createRequestLogger(requestId);
+
+  log.info(`Starting skill generation, prompt length: ${userPrompt?.length || 0}`);
+
   // 兼容旧的调用方式（没有 onReasoning）
   if (typeof onReasoning !== 'function') {
     options = onReasoning || {};
@@ -573,13 +625,16 @@ async function generateSkill(userPrompt, onChunk, onReasoning, options = {}) {
   const language = options.language || 'zh';
   const enableTools = options.enableTools !== false;
   const fileOptions = options.fileOptions || { scripts: false, references: true, assets: false };
+  const onFileGenerated = options.onFileGenerated; // 请求级别的文件生成回调
 
   if (!apiKey) {
     throw new Error('AI 服务未配置');
   }
 
-  // 重置生成的文件
-  resetGeneratedFiles();
+  // 创建请求级别的文件存储（解决并发问题）
+  const fileStore = createFileStore();
+  const toolExecutor = createToolExecutor(fileStore);
+  log.info('Created request-level file store and tool executor');
 
   const languageInstruction = language === 'en'
     ? 'Please generate the Skill content in English.'
@@ -701,23 +756,23 @@ ${forbiddenSection}
 
   while (iteration < MAX_TOOL_ITERATIONS) {
     iteration++;
-    console.log(`[AI] Iteration ${iteration}`);
+    log.info(`Iteration ${iteration}`);
 
     try {
       // 使用流式调用
-      const result = await streamAI(baseUrl, apiKey, model, messages, tools, onChunk, onReasoning);
+      const result = await streamAI(baseUrl, apiKey, model, messages, tools, onChunk, onReasoning, log);
 
       lastContent = result.content;
       lastReasoning = result.reasoning;
 
-      console.log(`[AI] Response content length: ${lastContent.length}`);
+      log.info(`Response content length: ${lastContent.length}`);
       if (lastReasoning) {
-        console.log(`[AI] Reasoning content length: ${lastReasoning.length}`);
+        log.info(`Reasoning content length: ${lastReasoning.length}`);
       }
 
       // 检查是否有工具调用
       if (result.toolCalls && result.toolCalls.length > 0) {
-        console.log(`[AI] Tool calls count: ${result.toolCalls.length}`);
+        log.info(`Tool calls count: ${result.toolCalls.length}`);
 
         // 添加助手消息到历史
         messages.push({
@@ -734,12 +789,12 @@ ${forbiddenSection}
           try {
             args = JSON.parse(toolCall.function.arguments);
           } catch (e) {
-            console.error(`[AI] Failed to parse tool arguments: ${e.message}`);
+            log.error(`Failed to parse tool arguments: ${e.message}`);
           }
 
-          console.log(`[AI] Tool call: ${toolName}`, JSON.stringify(args));
+          log.info(`Tool call: ${toolName}`, JSON.stringify(args));
 
-          const toolResult = await executeToolCall(toolName, args);
+          const toolResult = await executeToolCallFromExecutor(toolExecutor, toolName, args);
 
           // 如果是文件生成工具且成功，触发回调
           if (toolName === 'generate_file' && toolResult.success) {
@@ -748,10 +803,10 @@ ${forbiddenSection}
               filename: toolResult.filename,
               size: toolResult.size,
               totalFiles: toolResult.totalFiles
-            });
+            }, onFileGenerated);
           }
 
-          console.log(`[AI] Tool result: ${toolResult.success ? 'success' : 'failed'}`);
+          log.info(`Tool result: ${toolResult.success ? 'success' : 'failed'}`);
 
           // 添加工具结果到历史
           messages.push({
@@ -770,13 +825,13 @@ ${forbiddenSection}
       let contentToParse = lastContent;
       if (!contentToParse || contentToParse.trim() === '') {
         if (lastReasoning && lastReasoning.trim()) {
-          console.log('[AI] Content is empty, trying to parse from reasoning content');
+          log.info('Content is empty, trying to parse from reasoning content');
           contentToParse = lastReasoning;
         }
       }
       const parseResult = parseGeneratedSkill(contentToParse);
-      console.log('[AI] parseResult:', { success: parseResult.success, hasSkill: !!parseResult.skill, skillName: parseResult.skill?.name });
-      const generatedFiles = getGeneratedFiles();
+      log.info('parseResult:', { success: parseResult.success, hasSkill: !!parseResult.skill, skillName: parseResult.skill?.name });
+      const generatedFiles = fileStore.get(); // 使用请求级别的文件存储
 
       const finalResult = {
         ...parseResult,
@@ -788,7 +843,7 @@ ${forbiddenSection}
         reasoning: lastReasoning
       };
 
-      console.log('[AI] finalResult.success:', finalResult.success);
+      log.info('finalResult.success:', finalResult.success);
 
       if (parseResult.success) {
         finalResult.skill = {
@@ -802,11 +857,11 @@ ${forbiddenSection}
       return finalResult;
 
     } catch (err) {
-      console.error(`[AI] Error in iteration ${iteration}: ${err.message}`);
+      log.error(`Error in iteration ${iteration}: ${err.message}`);
 
       // 如果是第一次迭代就失败，尝试重试
       if (iteration === 1) {
-        console.log('[AI] Retrying without tools...');
+        log.info('Retrying without tools...');
         try {
           const data = await callAI(baseUrl, apiKey, model, messages, []);
           const content = data.choices?.[0]?.message?.content || '';
@@ -815,7 +870,7 @@ ${forbiddenSection}
           let contentToParse = content;
           if (!contentToParse || contentToParse.trim() === '') {
             if (reasoning && reasoning.trim()) {
-              console.log('[AI] Fallback: content is empty, parsing from reasoning');
+              log.info('Fallback: content is empty, parsing from reasoning');
               contentToParse = reasoning;
             }
           }
@@ -831,17 +886,17 @@ ${forbiddenSection}
   }
 
   // 达到最大迭代次数，返回最后的内容
-  console.log(`[AI] Max iterations reached: ${MAX_TOOL_ITERATIONS}`);
+  log.info(`Max iterations reached: ${MAX_TOOL_ITERATIONS}`);
   // 如果 content 为空但 reasoning 有内容，从 reasoning 中解析
   let contentToParse = lastContent;
   if (!contentToParse || contentToParse.trim() === '') {
     if (lastReasoning && lastReasoning.trim()) {
-      console.log('[AI] Max iterations: content is empty, parsing from reasoning');
+      log.info('Max iterations: content is empty, parsing from reasoning');
       contentToParse = lastReasoning;
     }
   }
   const parseResult = parseGeneratedSkill(contentToParse);
-  const generatedFiles = getGeneratedFiles();
+  const generatedFiles = fileStore.get(); // 使用请求级别的文件存储
 
   return {
     ...parseResult,
@@ -857,5 +912,4 @@ ${forbiddenSection}
 module.exports = {
   parseGeneratedSkill,
   generateSkill,
-  setFileGeneratedCallback,
 };
