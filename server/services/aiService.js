@@ -111,6 +111,67 @@ function readSchemasContent() {
 }
 
 /**
+ * 尝试修复被截断的 JSON 字符串
+ */
+function repairTruncatedJson(jsonStr) {
+  // 统计未闭合的括号和引号
+  let braceCount = 0;
+  let bracketCount = 0;
+  let inString = false;
+  let lastKey = '';
+
+  for (let i = 0; i < jsonStr.length; i++) {
+    const char = jsonStr[i];
+    if (!inString) {
+      if (char === '{') braceCount++;
+      if (char === '}') braceCount--;
+      if (char === '[') bracketCount++;
+      if (char === ']') bracketCount--;
+      if (char === '"') {
+        inString = true;
+        // 检查是否是 key
+        const prevChar = jsonStr.substring(0, i).trim().slice(-1);
+        if (prevChar === ',' || prevChar === '{') {
+          // 可能是 key，记录下来
+          let keyEnd = jsonStr.indexOf('"', i + 1);
+          if (keyEnd !== -1 && jsonStr[keyEnd + 1] === ':') {
+            lastKey = jsonStr.substring(i + 1, keyEnd);
+          }
+        }
+      }
+    } else {
+      if (char === '"' && jsonStr[i - 1] !== '\\') {
+        inString = false;
+      }
+    }
+  }
+
+  // 如果字符串没有闭合，添加闭合引号
+  let repaired = jsonStr;
+  if (inString) {
+    console.log('[AI] Repairing: closing unterminated string');
+    repaired += '"';
+  }
+
+  // 闭合未完成的值
+  if (lastKey && !repaired.trimEnd().endsWith('"""') && !repaired.trimEnd().endsWith('"')) {
+    // 可能需要添加空值
+  }
+
+  // 闭合括号
+  while (bracketCount > 0) {
+    repaired += ']';
+    bracketCount--;
+  }
+  while (braceCount > 0) {
+    repaired += '}';
+    braceCount--;
+  }
+
+  return repaired;
+}
+
+/**
  * 修复 JSON 字符串中的常见问题（如未转义的引号）
  */
 function fixJsonString(jsonStr) {
@@ -159,12 +220,18 @@ function fixJsonString(jsonStr) {
     i++;
   }
 
+  // 如果字符串未闭合，尝试修复
+  if (inString) {
+    console.log('[AI] String not closed, attempting repair');
+    result = repairTruncatedJson(result);
+  }
+
   return result;
 }
 
 function parseGeneratedSkill(rawOutput) {
   const safeOutput = typeof rawOutput === 'string' ? rawOutput : '';
-  console.log(`[AI] Parsing response, first 500 chars: ${safeOutput.substring(0, 500)}`);
+  console.log(`[AI] Parsing response, length: ${safeOutput.length}, first 500 chars: ${safeOutput.substring(0, 500)}`);
 
   // 1. Try to extract JSON from ```json ... ``` code blocks
   let codeBlockMatch = safeOutput.match(/```json\s*([\s\S]*?)```/);
@@ -179,6 +246,19 @@ function parseGeneratedSkill(rawOutput) {
       }
     } catch (e) {
       console.log(`[AI] Failed to parse json code block: ${e.message}`);
+      // 尝试修复截断的 JSON
+      if (e.message.includes('Unterminated')) {
+        try {
+          let jsonStr = repairTruncatedJson(codeBlockMatch[1].trim());
+          const parsed = JSON.parse(jsonStr);
+          if (isValidSkill(parsed)) {
+            console.log('[AI] Parsed from repaired json code block');
+            return { success: true, skill: fillDefaults(parsed) };
+          }
+        } catch (repairErr) {
+          console.log(`[AI] Repair attempt failed: ${repairErr.message}`);
+        }
+      }
     }
   }
 
@@ -206,6 +286,20 @@ function parseGeneratedSkill(rawOutput) {
         if (isValidSkill(parsed)) {
           console.log('[AI] Parsed from extracted JSON object');
           return { success: true, skill: fillDefaults(parsed) };
+        }
+      } else {
+        // JSON 未闭合，尝试修复
+        console.log('[AI] JSON object not properly closed, attempting repair');
+        jsonStr = repairTruncatedJson(jsonMatch[0]);
+        jsonStr = fixJsonString(jsonStr);
+        try {
+          const parsed = JSON.parse(jsonStr);
+          if (isValidSkill(parsed)) {
+            console.log('[AI] Parsed from repaired extracted JSON');
+            return { success: true, skill: fillDefaults(parsed) };
+          }
+        } catch (repairErr) {
+          console.log(`[AI] Repair attempt failed: ${repairErr.message}`);
         }
       }
     } catch (e) {

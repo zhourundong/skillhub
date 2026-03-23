@@ -22,7 +22,7 @@ const app = express();
 const PORT = process.env.PORT || 3030;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // 增加 JSON body 大小限制，防止 AI 响应被截断
 
 // 生产环境下服务前端静态文件（优先级高于技能资源）
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
