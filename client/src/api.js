@@ -1,7 +1,9 @@
 import axios from 'axios';
 import { clearAuthSession, getStoredToken } from './utils/authStorage';
 
-const api = axios.create({ baseURL: '/api' });
+// 使用 Vite 的 BASE_URL 环境变量，支持子路径部署
+const baseURL = `${import.meta.env.BASE_URL}api`;
+const api = axios.create({ baseURL });
 
 // Request interceptor - add auth token
 api.interceptors.request.use((config) => {
@@ -22,10 +24,12 @@ api.interceptors.response.use(
       // Only redirect to login if user was trying to access protected routes
       // Public routes like viewing skills should not redirect
       const protectedPaths = ['/channels', '/users'];
-      const isProtectedRoute = protectedPaths.some(p => window.location.pathname.startsWith(p));
+      const currentPath = window.location.pathname;
+      const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+      const isProtectedRoute = protectedPaths.some(p => currentPath.startsWith(`${basePath}${p}`));
       if (isProtectedRoute) {
         clearAuthSession();
-        window.location.href = '/login';
+        window.location.href = `${basePath}/login`;
       }
     }
     return Promise.reject(error);
@@ -49,7 +53,7 @@ export const usersApi = {
 export const skillsApi = {
   list: (params) => api.get('/skills', { params }).then(r => r.data),
   get: (id) => api.get(`/skills/${id}`).then(r => r.data),
-  getRaw: (id) => fetch(`/api/skills/${id}/raw`).then(r => r.text()),
+  getRaw: (id) => fetch(`${import.meta.env.BASE_URL}api/skills/${id}/raw`).then(r => r.text()),
   create: (data) => api.post('/skills', data).then(r => r.data),
   update: (id, data) => api.put(`/skills/${id}`, data).then(r => r.data),
   delete: (id) => api.delete(`/skills/${id}`).then(r => r.data),

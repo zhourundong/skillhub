@@ -2,7 +2,10 @@ version: '3.8'
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        BASE_URL: ${BASE_URL:-/}
     container_name: skillhub
     restart: unless-stopped
     ports:
@@ -12,6 +15,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3030
+      - BASE_URL=${BASE_URL:-/}
       - MYSQL_HOST=db
       - MYSQL_PORT=3306
       - MYSQL_USER=skillhub

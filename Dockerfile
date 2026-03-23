@@ -1,11 +1,15 @@
 # 多阶段构建
+# 构建参数：部署路径，默认为根路径 /
+ARG BASE_URL=/
+
 # 阶段1: 构建前端
 FROM --platform=linux/amd64 node:22-alpine AS frontend-builder
+ARG BASE_URL
 WORKDIR /app/client
 COPY client/package*.json ./
 RUN npm ci
 COPY client/ ./
-RUN npm run build
+RUN BASE_URL=${BASE_URL} npm run build
 
 # 阶段2: 安装后端依赖
 FROM --platform=linux/amd64 node:22-alpine AS backend-builder
@@ -37,6 +41,7 @@ COPY --from=frontend-builder --chown=nodejs:nodejs /app/client/dist /usr/share/n
 
 # 复制 Docker 配置文件
 COPY docker/nginx.conf /etc/nginx/http.d/default.conf
+COPY docker/nginx-subpath.conf /etc/nginx/http.d/nginx-subpath.conf
 COPY docker/start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh
 

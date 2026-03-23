@@ -159,7 +159,7 @@ export default function SkillDetail() {
         <button className="btn btn-default" onClick={() => navigate('/')}>返回列表</button>
         <div className="skill-detail-toolbar-actions">
           <a
-            href={`/api/skills/${id}/download`}
+            href={`${import.meta.env.BASE_URL}api/skills/${id}/download`}
             className="btn btn-default"
             style={{ textDecoration: 'none' }}
           >

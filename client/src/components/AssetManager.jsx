@@ -108,7 +108,7 @@ export default function AssetManager({ skillId, readonly }) {
                 {!readonly && (
                   <td style={{ textAlign: 'right' }}>
                     <a
-                      href={`/api/skills/${skillId}/assets/${encodeURIComponent(a.name)}`}
+                      href={`${import.meta.env.BASE_URL}api/skills/${skillId}/assets/${encodeURIComponent(a.name)}`}
                       className="btn btn-default"
                       style={{ padding: '4px 8px', fontSize: 12, textDecoration: 'none' }}
                       download

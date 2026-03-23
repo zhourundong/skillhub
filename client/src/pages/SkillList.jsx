@@ -181,7 +181,7 @@ export default function SkillList() {
   async function handleShare(skill, event) {
     event.stopPropagation();
 
-    const shareUrl = new URL(`/api/skills/${skill.id}/download`, window.location.origin).toString();
+    const shareUrl = new URL(`${import.meta.env.BASE_URL}api/skills/${skill.id}/download`, window.location.origin).toString();
 
     try {
       if (navigator.clipboard?.writeText) {

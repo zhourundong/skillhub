@@ -55,7 +55,7 @@ export default function AiGenerator({ onComplete, onCancel }) {
 
     try {
       const token = getStoredToken();
-      const response = await fetch('/api/ai/generate', {
+      const response = await fetch(`${import.meta.env.BASE_URL}api/ai/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
