@@ -75,11 +75,103 @@ export default function AiGenerator({ onComplete, onCancel }) {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      // 处理 buffer 中的事件的辅助函数
+      const processBuffer = (buf, isFinal = false) => {
+        const lines = buf.split('\n');
+        // 如果不是最终处理，保留最后一行（可能不完整）
+        const remainingBuffer = isFinal ? '' : (lines.pop() || '');
+
+        let eventType = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6);
+            try {
+              const data = JSON.parse(dataStr);
+              return { eventType, data, remainingBuffer };
+            } catch (e) {
+              console.error('[AI Generator] JSON parse error:', e.message);
+            }
+          }
+        }
+        return { eventType: null, data: null, remainingBuffer };
+      };
+
+      // 处理单个事件的函数
+      const handleEvent = (eventType, data) => {
+        if (eventType === 'file') {
+          setGeneratingFiles(prev => ({
+            ...prev,
+            [data.type]: [...prev[data.type], { filename: data.filename, size: data.size }]
+          }));
+          setStatusText(`生成文件: ${data.filename}`);
+        } else if (eventType === 'reasoning') {
+          setReasoningContent(prev => prev + data.content);
+          hasReasoningRef.current = true;
+          setStatusText('AI 正在思考...');
+        } else if (eventType === 'chunk') {
+          setStreamContent(prev => prev + data.content);
+          setStatusText('AI 正在生成...');
+        } else if (eventType === 'done') {
+          console.log('[AI Generator] Done event received:', data);
+          if (hasReasoningRef.current) {
+            setShowReasoning(false);
+          }
+          if (data.success && data.skill) {
+            const skill = {
+              ...data.skill,
+              scripts: data.skill.scripts || [],
+              references: data.skill.references || [],
+              assets: data.skill.assets || []
+            };
+            console.log('[AI Generator] Setting result:', skill);
+            setResult(skill);
+            setParseError(false);
+          } else {
+            console.log('[AI Generator] Parse failed, rawOutput:', data.rawOutput?.substring(0, 200));
+            setResult(null);
+            setParseError(true);
+            setRawOutput(data.rawOutput || '');
+          }
+        } else if (eventType === 'error') {
+          throw new Error(data.error);
+        }
+      };
+
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+        }
+
+        if (done) {
+          // 流结束，处理剩余的 buffer
+          if (buffer.trim()) {
+            console.log('[AI Generator] Processing remaining buffer, length:', buffer.length);
+            console.log('[AI Generator] Buffer content:', buffer);
+            let eventType = '';
+            const lines = buffer.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                eventType = line.slice(7).trim();
+              } else if (line.startsWith('data: ')) {
+                const dataStr = line.slice(6);
+                console.log('[AI Generator] Parsing data line, eventType:', eventType, 'dataStr length:', dataStr.length);
+                try {
+                  const data = JSON.parse(dataStr);
+                  handleEvent(eventType, data);
+                } catch (e) {
+                  console.error('[AI Generator] Final buffer parse error:', e.message, 'dataStr:', dataStr.substring(0, 100));
+                }
+              }
+            }
+          } else {
+            console.log('[AI Generator] Stream ended with empty buffer');
+          }
+          break;
+        }
 
         // 解析 SSE 事件
         const lines = buffer.split('\n');
@@ -93,46 +185,7 @@ export default function AiGenerator({ onComplete, onCancel }) {
             const dataStr = line.slice(6);
             try {
               const data = JSON.parse(dataStr);
-
-              if (eventType === 'file') {
-                // 新文件生成
-                setGeneratingFiles(prev => ({
-                  ...prev,
-                  [data.type]: [...prev[data.type], { filename: data.filename, size: data.size }]
-                }));
-                setStatusText(`生成文件: ${data.filename}`);
-              } else if (eventType === 'reasoning') {
-                // 思考内容（增量发送）
-                setReasoningContent(prev => prev + data.content);
-                hasReasoningRef.current = true;
-                setStatusText('AI 正在思考...');
-              } else if (eventType === 'chunk') {
-                // 流式内容（增量发送）
-                setStreamContent(prev => prev + data.content);
-                setStatusText('AI 正在生成...');
-              } else if (eventType === 'done') {
-                // 完成 - 思考结束后默认收起
-                if (hasReasoningRef.current) {
-                  setShowReasoning(false);
-                }
-                if (data.success) {
-                  // 合并生成的文件内容
-                  const skill = {
-                    ...data.skill,
-                    scripts: data.skill.scripts || [],
-                    references: data.skill.references || [],
-                    assets: data.skill.assets || []
-                  };
-                  setResult(skill);
-                  setParseError(false);
-                } else {
-                  setResult(null);
-                  setParseError(true);
-                  setRawOutput(data.rawOutput || '');
-                }
-              } else if (eventType === 'error') {
-                throw new Error(data.error);
-              }
+              handleEvent(eventType, data);
             } catch (e) {
               if (e.message && !e.message.includes('JSON')) {
                 throw e;

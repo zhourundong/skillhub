@@ -60,11 +60,14 @@ router.post('/generate', authenticateToken, async (req, res) => {
     const result = await aiService.generateSkill(prompt, onChunk, onReasoning, { language, fileOptions });
 
     // 发送最终结果
-    sendEvent('done', {
+    const doneData = {
       success: result.success,
-      skill: result.skill,
-      rawOutput: result.rawOutput
-    });
+      skill: result.skill || null,
+      rawOutput: result.rawOutput || null
+    };
+    console.log(`[AI Route] Done event: success=${result.success}, hasSkill=${!!result.skill}, skillName=${result.skill?.name}`);
+    console.log(`[AI Route] Sending done event with skill data length: ${JSON.stringify(doneData.skill || {}).length}`);
+    sendEvent('done', doneData);
   } catch (err) {
     console.error(`[AI Route] Error: ${err.message}`);
     sendEvent('error', { error: err.message });
